@@ -1,0 +1,20 @@
+{
+  "transactions": [
+    {
+      "id": "PH-H1-TX-1",
+      "kiosk": "PH-H1",
+      "item": "Insulin Pen",
+      "amount": 850,
+      "payment": "UPI (user@aura-upi)",
+      "status": "SUCCESS"
+    },
+    {
+      "id": "PH-H1-TX-2",
+      "kiosk": "PH-H1",
+      "item": "Basic First Aid Kit",
+      "amount": 72,
+      "payment": "UPI (user@aura-upi)",
+      "status": "SUCCESS"
+    }
+  ]
+}
