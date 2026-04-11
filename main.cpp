@@ -1,27 +1,40 @@
 /*
  * ============================================================================
- *  AURA RETAIL OS — Main Simulation (Entry Point)
+ *  AURA RETAIL OS — Interactive Kiosk Simulation (Entry Point)
  * ============================================================================
  *
- *  This file orchestrates the entire system and demonstrates all 7 design
- *  patterns working together cohesively.
+ *  Role-based entry:
+ *    [1] Customer — browse products, choose item, pay, see result
+ *    [2] Admin    — PIN-protected panel to restock kiosk inventory
  *
- *  Dynamic Inputs:
- *    - Kiosk IDs and locations
- *    - Product names, prices, and stock quantities
- *    - Payment method selection (UPI / Card / Wallet)
- *    - UPI VPA or Card number
- *    - Refrigeration temperature for the pharmacy kiosk
+ *  Customer Flow:
+ *    Step 1 — Choose kiosk    : [1] Food  [2] Pharmacy
+ *    Step 2 — Browse products : Numbered catalogue with price & stock
+ *    Step 3 — Pick a product  : Enter the number shown
+ *    Step 4 — Choose payment  : [1] UPI  [2] Card  [3] Wallet
+ *    Step 5 — See result      : PAYMENT SUCCESSFUL / PAYMENT FAILED banner
+ *    Step 6 — Continue?       : [1] Buy another  [2] Exit
+ *
+ *  Admin Flow:
+ *    PIN check → Choose kiosk → View full stock →
+ *    Pick item → Enter restock quantity → Confirm
  *
  * ============================================================================
  */
 
 #include "persistence/PersistenceManager.h"
 #include "registry/CentralRegistry.h"
+#include <filesystem> // for absolute path resolution (C++17)
+#include <iomanip>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <string>
-#include <limits>
+#include <vector>
+
+#ifdef _WIN32
+#include <windows.h> // for SetConsoleOutputCP
+#endif
 
 // Core & Factory
 #include "core/KioskFactory.h"
@@ -43,270 +56,706 @@
 
 using namespace std;
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Constants ──────────────────────────────────────────────────────────────
+static const string ADMIN_PIN = "1234"; // Change this to any PIN you like
+static const string FOOD_INV_FILE =
+    "food_inventory.json"; // food kiosk inventory
+static const string PHARMA_INV_FILE =
+    "pharmacy_inventory.json"; // pharmacy kiosk inventory
+static const string EMERGENCY_INV_FILE =
+    "emergency_inventory.json"; // emergency kiosk inventory
 
-void printSectionHeader(const string &title) {
-    cout << "\n\n";
-    cout << "████████████████████████████████████████████████████████████████\n";
-    cout << "█  " << title << "\n";
-    cout << "████████████████████████████████████████████████████████████████\n\n";
+// Forward declarations (saveAll uses Kiosk*)
+class Kiosk;
+
+// ─── UI Helpers ─────────────────────────────────────────────────────────────
+
+void clearScreen() {
+#ifdef _WIN32
+  system("cls");
+#else
+  system("clear");
+#endif
 }
 
-void clearInput() {
-    cin.ignore(numeric_limits<streamsize>::max(), '\n');
+void pressEnterToContinue() {
+  cout << "\n  [ Press ENTER to continue... ]";
+  cin.ignore(numeric_limits<streamsize>::max(), '\n');
 }
 
-string promptString(const string &prompt, const string &defaultVal = "") {
-    string val;
+void printBanner(const string &title, char border = '=') {
+  string line(62, border);
+  cout << "\n" << line << "\n";
+  int pad = max(0, (62 - (int)title.size()) / 2);
+  cout << string(pad, ' ') << title << "\n";
+  cout << line << "\n";
+}
+
+// Safe integer input within [lo, hi]. Re-prompts on invalid input.
+int readChoice(const string &prompt, int lo, int hi) {
+  string raw;
+  while (true) {
     cout << prompt;
-    if (!defaultVal.empty()) cout << " [default: " << defaultVal << "]";
-    cout << ": ";
-    getline(cin, val);
-    if (val.empty()) val = defaultVal;
-    return val;
-}
-
-double promptDouble(const string &prompt, double defaultVal) {
-    string raw;
-    cout << prompt << " [default: " << defaultVal << "]: ";
     getline(cin, raw);
-    if (raw.empty()) return defaultVal;
-    try { return stod(raw); } catch (...) { return defaultVal; }
-}
-
-int promptInt(const string &prompt, int defaultVal) {
-    string raw;
-    cout << prompt << " [default: " << defaultVal << "]: ";
-    getline(cin, raw);
-    if (raw.empty()) return defaultVal;
-    try { return stoi(raw); } catch (...) { return defaultVal; }
-}
-
-// Returns a unique_ptr<PaymentProcessor> based on user choice
-unique_ptr<PaymentProcessor> choosePaymentStrategy(const string &label) {
-    cout << "\n  Select payment method for " << label << ":\n";
-    cout << "    [1] UPI\n";
-    cout << "    [2] Card\n";
-    cout << "    [3] Wallet\n";
-    int choice = promptInt("  Enter choice", 1);
-
-    if (choice == 2) {
-        string cardNum = promptString("  Enter card number", "5555444433332222");
-        return make_unique<CardAdapter>(cardNum);
-    } else if (choice == 3) {
-        string wallet = promptString("  Enter wallet name/ID", "AuraWallet");
-        return make_unique<WalletAdapter>(wallet);
-    } else {
-        string vpa = promptString("  Enter UPI VPA", "user@aura-upi");
-        return make_unique<UPIAdapter>(vpa);
+    try {
+      int val = stoi(raw);
+      if (val >= lo && val <= hi)
+        return val;
+    } catch (...) {
     }
+    cout << "  ⚠  Please enter a number between " << lo << " and " << hi
+         << ".\n";
+  }
+}
+
+// Safe positive integer input. Re-prompts on invalid or non-positive input.
+int readPositiveInt(const string &prompt) {
+  string raw;
+  while (true) {
+    cout << prompt;
+    getline(cin, raw);
+    try {
+      int val = stoi(raw);
+      if (val > 0)
+        return val;
+    } catch (...) {
+    }
+    cout << "  ⚠  Please enter a positive whole number (e.g. 5, 10, 50).\n";
+  }
+}
+
+// Safe non-empty string input.
+string readNonEmpty(const string &prompt) {
+  string val;
+  while (true) {
+    cout << prompt;
+    getline(cin, val);
+    if (!val.empty())
+      return val;
+    cout << "  ⚠  This field cannot be empty. Please try again.\n";
+  }
+}
+
+// ─── Show numbered product catalogue (customer view — out-of-stock included) ─
+// Returns parallel vector of item IDs.
+vector<string> showProductMenu(Kiosk *kiosk, bool showOutOfStock = true) {
+  vector<string> ids = kiosk->getInventory()->getAllItemIds();
+  vector<string> shown;
+
+  ostringstream table;
+  table << "\n";
+  table
+      << "  ┌──────┬──────────────────────────────┬──────────┬─────────────┐\n";
+  table
+      << "  │  No. │  Product Name                │  Price   │  Stock      │\n";
+  table
+      << "  ├──────┼──────────────────────────────┼──────────┼─────────────┤\n";
+
+  int num = 1;
+  bool hasRefrigerated = false;
+  for (const string &id : ids) {
+    // These calls will trigger SecureInventory cout logging immediately
+    auto item = kiosk->getInventory()->getItem(id);
+    int stock = kiosk->getInventory()->getStock(id);
+    if (!item)
+      continue;
+
+    string name = item->getName();
+    string paddedName = name;
+    int nameVisLen = name.length();
+    if (item->requiresRefrigeration()) {
+      paddedName += " \xE2\x9D\x84"; // ❄
+      nameVisLen += 2;               // " " + emoji visually takes 2 columns
+      hasRefrigerated = true;
+    }
+    int namePad = 28 - nameVisLen;
+    if (namePad > 0)
+      paddedName.append(namePad, ' ');
+
+    ostringstream priceStream;
+    priceStream << fixed << setprecision(0) << item->getPrice();
+    string priceStr = "Rs." + priceStream.str();
+    int pricePad = 8 - priceStr.length();
+    if (pricePad > 0)
+      priceStr.append(pricePad, ' ');
+
+    string stockStr =
+        (stock > 0) ? to_string(stock) + " unit(s)" : "OUT OF STOCK";
+    int stockPad = 11 - stockStr.length();
+    if (stockPad > 0)
+      stockStr.append(stockPad, ' ');
+
+    table << "  │ [" << left << setw(2) << num << "] │  " << paddedName << "│  "
+          << priceStr << "│  " << stockStr << "│\n";
+
+    shown.push_back(id);
+    num++;
+  }
+
+  table
+      << "  └──────┴──────────────────────────────┴──────────┴─────────────┘\n";
+
+  // Now that all inline proxy logs have printed sequentially, print the clean
+  // table grid
+  cout << table.str();
+
+  if (hasRefrigerated) {
+    cout << "  ❄ = Refrigerated item\n";
+  }
+
+  (void)
+      showOutOfStock; // both modes show full list; stock column tells the story
+  return shown;
+}
+
+// ─── Payment method selection ────────────────────────────────────────────────
+unique_ptr<PaymentProcessor> choosePayment() {
+  printBanner("  STEP 3 — SELECT PAYMENT METHOD  ", '-');
+  cout << "\n";
+  cout << "  [1]  UPI    — Pay with your UPI ID\n";
+  cout << "               Format: yourname@bank  (e.g. ram@sbi, "
+          "priya@paytm)\n\n";
+  cout << "  [2]  Card   — Debit or Credit card\n";
+  cout << "               Enter 16 digits, no spaces  (e.g. "
+          "4111111111111111)\n\n";
+  cout << "  [3]  Wallet — Digital wallet\n";
+  cout << "               Enter wallet name  (e.g. AuraWallet, PhonePe, "
+          "Paytm)\n";
+  cout << "\n";
+
+  int choice = readChoice("  Your payment choice [1/2/3]: ", 1, 3);
+
+  if (choice == 1) {
+    string vpa = readNonEmpty("\n  UPI ID: ");
+    return make_unique<UPIAdapter>(vpa);
+  } else if (choice == 2) {
+    string card = readNonEmpty("\n  Card Number: ");
+    return make_unique<CardAdapter>(card);
+  } else {
+    string wallet = readNonEmpty("\n  Wallet Name: ");
+    return make_unique<WalletAdapter>(wallet);
+  }
+}
+
+// ─── Print large SUCCESS / FAILED result banner ──────────────────────────────
+void printTransactionResult(const Transaction &tx) {
+  cout << "\n";
+  if (tx.status == TransactionStatus::SUCCESS) {
+    cout << "  ╔══════════════════════════════════════════════════════════╗\n";
+    cout << "  ║                                                          ║\n";
+    cout << "  ║          ✅   PAYMENT SUCCESSFUL   ✅                   ║\n";
+    cout << "  ║                                                          ║\n";
+    cout << "  ╠══════════════════════════════════════════════════════════╣\n";
+    cout << "  ║  Transaction ID : " << left << setw(38) << tx.transactionId
+         << "║\n";
+    cout << "  ║  Item Purchased : " << left << setw(38) << tx.itemName
+         << "║\n";
+    cout << "  ║  Amount Paid    : Rs." << left << setw(35) << fixed
+         << setprecision(2) << tx.amount << "║\n";
+    cout << "  ║  Payment Method : " << left << setw(38) << tx.paymentMethod
+         << "║\n";
+    cout << "  ║  Timestamp      : " << left << setw(38)
+         << tx.getTimestampString() << "║\n";
+    cout << "  ║                                                          ║\n";
+    cout << "  ║  🎉 Thank you for shopping at Aura Retail OS!           ║\n";
+    cout << "  ║     Please collect your item from the dispenser slot.   ║\n";
+    cout << "  ╚══════════════════════════════════════════════════════════╝\n";
+  } else {
+    cout << "  ╔══════════════════════════════════════════════════════════╗\n";
+    cout << "  ║                                                          ║\n";
+    cout << "  ║            ❌   PAYMENT FAILED   ❌                     ║\n";
+    cout << "  ║                                                          ║\n";
+    cout << "  ╠══════════════════════════════════════════════════════════╣\n";
+    cout << "  ║  Transaction ID : " << left << setw(38) << tx.transactionId
+         << "║\n";
+    cout << "  ║  Item           : " << left << setw(38) << tx.itemName
+         << "║\n";
+    cout << "  ║  Reason         : Item out of stock, payment declined,  ║\n";
+    cout << "  ║                   or required hardware not available.   ║\n";
+    cout << "  ║                                                          ║\n";
+    cout << "  ║  ℹ  You have NOT been charged.                          ║\n";
+    cout << "  ║     Please try again or choose a different item.        ║\n";
+    cout << "  ╚══════════════════════════════════════════════════════════╝\n";
+  }
+}
+
+// ─── Admin Panel ─────────────────────────────────────────────────────────────
+void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
+                   Kiosk *emergencyKiosk) {
+
+  // --- PIN Authentication ---
+  printBanner("  ADMIN LOGIN  ");
+  cout << "\n  This panel is restricted to authorised personnel only.\n";
+  cout << "  You have 3 attempts to enter the correct PIN.\n\n";
+
+  bool authenticated = false;
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    cout << "  Enter Admin PIN (attempt " << attempt << "/3): ";
+    string pin;
+    getline(cin, pin);
+    if (pin == ADMIN_PIN) {
+      authenticated = true;
+      break;
+    }
+    if (attempt < 3)
+      cout << "  ❌ Incorrect PIN. Try again.\n\n";
+  }
+
+  if (!authenticated) {
+    cout << "\n  🚫 Access denied. Too many incorrect attempts.\n";
+    pressEnterToContinue();
+    return;
+  }
+
+  cout << "\n  ✅ PIN accepted. Welcome, Admin.\n";
+  pressEnterToContinue();
+
+  // --- Admin Menu Loop ---
+  bool adminRunning = true;
+  while (adminRunning) {
+    printBanner("  ADMIN PANEL — INVENTORY MANAGEMENT  ");
+    cout << "\n";
+    cout << "  [1]  Restock Food Kiosk        (Central Metro Station)\n";
+    cout << "  [2]  Restock Pharmacy Kiosk    (City Hospital)\n";
+    cout << "  [3]  Restock Emergency Kiosk   (Highway Outpost)\n";
+    cout << "  [4]  View all kiosk stock\n";
+    cout << "  [5]  Exit Admin Panel\n";
+    cout << "\n";
+
+    int adminChoice = readChoice("  Admin choice [1/2/3/4/5]: ", 1, 5);
+
+    if (adminChoice == 5) {
+      adminRunning = false;
+      break;
+    }
+
+    if (adminChoice == 4) {
+      // View stock report for both kiosks
+      printBanner("  FOOD KIOSK \u2014 CURRENT STOCK  ", '-');
+      showProductMenu(foodKiosk);
+      printBanner("  PHARMACY KIOSK \u2014 CURRENT STOCK  ", '-');
+      showProductMenu(pharmacyKiosk);
+      printBanner("  EMERGENCY KIOSK \u2014 CURRENT STOCK  ", '-');
+      showProductMenu(emergencyKiosk);
+      pressEnterToContinue();
+      continue;
+    }
+
+    // Restock flow
+    Kiosk *targetKiosk;
+    string targetLabel;
+    if (adminChoice == 1) {
+      targetKiosk = foodKiosk;
+      targetLabel = "Food Kiosk \u2014 Central Metro Station";
+    } else if (adminChoice == 2) {
+      targetKiosk = pharmacyKiosk;
+      targetLabel = "Pharmacy Kiosk \u2014 City Hospital";
+    } else {
+      targetKiosk = emergencyKiosk;
+      targetLabel = "Emergency Kiosk \u2014 Highway Outpost";
+    }
+
+    printBanner("  RESTOCK: " + targetLabel + "  ", '-');
+    vector<string> itemIds = showProductMenu(targetKiosk);
+
+    if (itemIds.empty()) {
+      cout << "\n  ⚠  No items found in this kiosk.\n";
+      pressEnterToContinue();
+      continue;
+    }
+
+    cout << "\n  [0]  Cancel — go back\n\n";
+
+    int itemChoice = readChoice("  Select item to restock [0 to cancel]: ", 0,
+                                (int)itemIds.size());
+
+    if (itemChoice == 0)
+      continue;
+
+    string selectedId = itemIds[itemChoice - 1];
+    auto selectedItem = targetKiosk->getInventory()->getItem(selectedId);
+    int currentStock = targetKiosk->getInventory()->getStock(selectedId);
+
+    cout << "\n  ─────────────────────────────────────────────────────\n";
+    cout << "  Item          : " << selectedItem->getName() << "\n";
+    cout << "  Current Stock : " << currentStock << " unit(s)\n";
+    cout << "  ─────────────────────────────────────────────────────\n\n";
+
+    int qty = readPositiveInt("  Enter quantity to add (e.g. 10, 50): ");
+
+    // Confirm before applying
+    cout << "\n  Confirm: Add " << qty << " unit(s) of \""
+         << selectedItem->getName() << "\" to stock?\n";
+    cout << "  [1]  Yes — apply restock\n";
+    cout << "  [2]  No  — cancel\n\n";
+
+    int confirm = readChoice("  Confirm [1/2]: ", 1, 2);
+    if (confirm == 2) {
+      cout << "  Restock cancelled.\n";
+      pressEnterToContinue();
+      continue;
+    }
+
+    targetKiosk->restockInventory(selectedId, qty);
+
+    // Save immediately \u2014 admin changes must not be lost on unexpected
+    // close
+    string saveFile;
+    if (adminChoice == 1)
+      saveFile = FOOD_INV_FILE;
+    else if (adminChoice == 2)
+      saveFile = PHARMA_INV_FILE;
+    else
+      saveFile = EMERGENCY_INV_FILE;
+
+    PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
+                                            saveFile);
+
+    int newStock = targetKiosk->getInventory()->getStock(selectedId);
+    cout << "\n  ✅ Restock complete! Inventory saved to disk.\n";
+    cout << "     \"" << selectedItem->getName()
+         << "\" — New stock: " << newStock << " unit(s)\n";
+    pressEnterToContinue();
+  }
+
+  cout << "\n  👋 Admin session ended.\n";
+  pressEnterToContinue();
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 int main() {
 
-    // ── Welcome ──────────────────────────────────────────────────────────────
+  // ── SYSTEM SETUP ─────────────────────────────────────────────────────
+#ifdef _WIN32
+  // Force Windows console to use UTF-8 so emojis and box characters render
+  // correctly
+  SetConsoleOutputCP(CP_UTF8);
+#endif
+
+  // Pre-configured kiosks and products. Users never enter these manually.
+
+  // --- Food Kiosk ---
+  auto foodKioskBase =
+      KioskFactory::createKiosk("food", "FD-S1", "Central Metro Station");
+
+  auto water = make_shared<Product>("P-201", "Mineral Water", 20.0);
+  auto sandwich = make_shared<Product>("P-202", "Veg Sandwich", 120.0, true);
+  auto cola = make_shared<Product>("P-203", "Cold Cola Can", 40.0);
+  auto chips = make_shared<Product>("P-204", "Potato Chips", 30.0);
+  auto coffee = make_shared<Product>("P-205", "Hot Coffee", 60.0);
+
+  foodKioskBase->addProduct(water, 20);
+  foodKioskBase->addProduct(sandwich, 5);
+  foodKioskBase->addProduct(cola, 15);
+  foodKioskBase->addProduct(chips, 10);
+  foodKioskBase->addProduct(coffee, 8);
+
+  // --- Pharmacy Kiosk (refrigerated) ---
+  auto pharmacyKioskBase =
+      KioskFactory::createKiosk("pharmacy", "PH-H1", "City Hospital");
+  pharmacyKioskBase->setDispenser(make_unique<RefrigeratedDispenser>(4.0));
+
+  auto insulin = make_shared<Product>("P-102", "Insulin Pen", 850.0, true);
+  auto vitamin = make_shared<Product>("P-104", "Vitamin C Tabs", 80.0);
+  auto crocin = make_shared<Product>("P-101", "Crocin 500mg", 50.0);
+  auto bandage = make_shared<Product>("P-103", "Bandage Roll", 30.0);
+
+  auto firstAid = make_shared<Bundle>("B-001", "Basic First Aid Kit", 10.0);
+  firstAid->add(crocin);
+  firstAid->add(bandage);
+
+  pharmacyKioskBase->addProduct(insulin, 5);
+  pharmacyKioskBase->addProduct(firstAid, 10);
+  pharmacyKioskBase->addProduct(vitamin, 12);
+
+  // Wrap pharmacy kiosk with decorator modules
+  unique_ptr<Kiosk> pharmacyKiosk =
+      make_unique<RefrigerationModule>(std::move(pharmacyKioskBase), 4.0);
+  pharmacyKiosk = make_unique<NetworkModule>(std::move(pharmacyKiosk));
+
+  // --- Emergency Kiosk (isolated network) ---
+  auto emergencyKioskBase =
+      KioskFactory::createKiosk("emergency", "EM-10", "Highway Outpost");
+
+  auto flashlight = make_shared<Product>("P-301", "LED Flashlight", 250.0);
+  auto blanket = make_shared<Product>("P-302", "Survival Blanket", 400.0);
+  auto matches = make_shared<Product>("P-303", "Waterproof Matches", 50.0);
+
+  emergencyKioskBase->addProduct(flashlight, 15);
+  emergencyKioskBase->addProduct(blanket, 10);
+  emergencyKioskBase->addProduct(matches, 30);
+
+  unique_ptr<Kiosk> emergencyKiosk =
+      make_unique<NetworkModule>(std::move(emergencyKioskBase));
+
+  // Load historical inventory data (overwrites default stocks)
+  PersistenceManager::loadInventoryFromFile(foodKioskBase->getInventory(),
+                                            FOOD_INV_FILE);
+  PersistenceManager::loadInventoryFromFile(pharmacyKiosk->getInventory(),
+                                            PHARMA_INV_FILE);
+  PersistenceManager::loadInventoryFromFile(emergencyKiosk->getInventory(),
+                                            EMERGENCY_INV_FILE);
+
+  // Registry
+  CentralRegistry &registry = CentralRegistry::getInstance();
+  registry.registerKiosk("FD-S1");
+  registry.registerKiosk("PH-H1");
+  registry.registerKiosk("EM-10");
+
+  // ── WELCOME SCREEN ─────────────────────────────────────────────────────
+  clearScreen();
+  cout << "\n";
+  cout
+      << "  ╔══════════════════════════════════════════════════════════════╗\n";
+  cout
+      << "  ║                                                              ║\n";
+  cout
+      << "  ║           🌟   AURA RETAIL KIOSK SYSTEM   🌟                 ║\n";
+  cout
+      << "  ║                                                              ║\n";
+  cout
+      << "  ║   Welcome! Browse products and pay with UPI, Card or Wallet. ║\n";
+  cout
+      << "  ║   Admins can log in to manage inventory stock levels.        ║\n";
+  cout
+      << "  ║                                                              ║\n";
+  cout
+      << "  ╚══════════════════════════════════════════════════════════════╝\n";
+
+  // ── ROLE SELECTION LOOP ────────────────────────────────────────────────
+  bool running = true;
+  while (running) {
+
+    printBanner("  WHO ARE YOU?  ");
     cout << "\n";
-    cout << "╔══════════════════════════════════════════════════════════════╗\n";
-    cout << "║        🌟  AURA RETAIL OS — Interactive Simulation  🌟       ║\n";
-    cout << "║   Press ENTER at any prompt to accept the default value.     ║\n";
-    cout << "╚══════════════════════════════════════════════════════════════╝\n";
+    cout << "  [1]  🛒  Customer  — Browse products and make a purchase\n";
+    cout << "  [2]  🔐  Admin     — Manage kiosk inventory (PIN required)\n";
+    cout << "  [3]  🚪  Exit\n";
+    cout << "\n";
 
-    auto foodProxy = make_shared<SecureInventory>();
+    int role = readChoice("  Select your role [1/2/3]: ", 1, 3);
 
-    // Load existing items BEFORE we inject the defaults.
-    PersistenceManager::loadInventoryFromFile(foodProxy.get(), "inventory.json");
-
-    // =========================================================================
-    printSectionHeader("1. SYSTEM INITIALIZATION & FACTORY PATTERN");
-    // =========================================================================
-
-    cout << "── Configure Food Kiosk ─────────────────────────────────────\n";
-    string foodKioskId  = promptString("  Food Kiosk ID",       "FD-S1");
-    string foodLocation = promptString("  Food Kiosk Location", "Central Metro Station");
-
-    cout << "\n── Configure Pharmacy Kiosk ─────────────────────────────────\n";
-    string pharmaKioskId  = promptString("  Pharmacy Kiosk ID",       "PH-H1");
-    string pharmaLocation = promptString("  Pharmacy Kiosk Location", "City Hospital");
-
-    CentralRegistry &registry = CentralRegistry::getInstance();
-
-    // Use Factory Pattern to create kiosks
-    auto foodKioskBase    = KioskFactory::createKiosk("food",     foodKioskId,  foodLocation);
-    auto pharmacyKioskBase = KioskFactory::createKiosk("pharmacy", pharmaKioskId, pharmaLocation);
-
-    registry.registerKiosk(foodKioskBase->getId());
-    registry.registerKiosk(pharmacyKioskBase->getId());
-
-    foodKioskBase->displayInfo();
-    pharmacyKioskBase->displayInfo();
-
-    // =========================================================================
-    printSectionHeader("2. INVENTORY SETUP & COMPOSITE PATTERN");
-    // =========================================================================
-
-    cout << "── Configure Products ───────────────────────────────────────\n";
-
-    // -- Pharmacy products --
-    cout << "\n  [Pharmacy] Tablet product:\n";
-    string crocinName  = promptString("    Name",  "Crocin 500mg");
-    double crocinPrice = promptDouble("    Price", 50.0);
-
-    cout << "\n  [Pharmacy] Cold-chain product (requires refrigeration):\n";
-    string insulinName  = promptString("    Name",  "Insulin Pen");
-    double insulinPrice = promptDouble("    Price", 850.0);
-
-    cout << "\n  [Pharmacy] Bandage product:\n";
-    string bandageName  = promptString("    Name",  "Bandage Roll");
-    double bandagePrice = promptDouble("    Price", 30.0);
-
-    // -- Food products --
-    cout << "\n  [Food] Beverage product:\n";
-    string waterName  = promptString("    Name",  "Mineral Water");
-    double waterPrice = promptDouble("    Price", 20.0);
-    int    waterQty   = promptInt   ("    Stock quantity", 50);
-
-    cout << "\n  [Food] Snack product:\n";
-    string sandwichName  = promptString("    Name",  "Veg Sandwich");
-    double sandwichPrice = promptDouble("    Price", 120.0);
-    int    sandwichQty   = promptInt   ("    Stock (set low to test out-of-stock)", 2);
-
-    // -- Bundle discount --
-    cout << "\n  [Bundle] First Aid Kit:\n";
-    string bundleId   = promptString("    Bundle ID",           "B-001");
-    string bundleName = promptString("    Bundle Name",         "Basic First Aid Kit");
-    double bundleDisc = promptDouble("    Discount percentage", 10.0);
-
-    // Creating leaf products
-    auto crocin   = make_shared<Product>("P-101", crocinName,   crocinPrice);
-    auto insulin  = make_shared<Product>("P-102", insulinName,  insulinPrice, true); // needs refrigeration
-    auto bandage  = make_shared<Product>("P-103", bandageName,  bandagePrice);
-    auto water    = make_shared<Product>("P-201", waterName,    waterPrice);
-    auto sandwich = make_shared<Product>("P-202", sandwichName, sandwichPrice, true);
-
-    // Creating composite bundle
-    auto firstAidKit = make_shared<Bundle>(bundleId, bundleName, bundleDisc);
-    firstAidKit->add(crocin);
-    firstAidKit->add(bandage);
-
-    // Display Composite structure
-    cout << "\nComposite Bundle Structure:\n";
-    firstAidKit->display();
-
-    // Adding to Kiosks (via SecureInventory Proxy)
-    foodKioskBase->addProduct(water,    waterQty);
-    foodKioskBase->addProduct(sandwich, sandwichQty);
-
-    int insulinQty   = promptInt("\n  Pharmacy — Insulin stock quantity",        5);
-    int firstAidQty  = promptInt("  Pharmacy — First Aid Kit stock quantity",   10);
-    pharmacyKioskBase->addProduct(insulin,     insulinQty);
-    pharmacyKioskBase->addProduct(firstAidKit, firstAidQty);
-
-    cout << "\nPharmacy Kiosk Catalogue (Proxy logs access):\n";
-    pharmacyKioskBase->getInventory()->displayCatalogue();
-
-    // =========================================================================
-    printSectionHeader("3. HARDWARE & DECORATOR PATTERN");
-    // =========================================================================
-
-    cout << "── Configure Refrigeration Unit ─────────────────────────────\n";
-    double refTemp = promptDouble("  Refrigeration temperature (°C)", 4.0);
-
-    pharmacyKioskBase->setDispenser(make_unique<RefrigeratedDispenser>(refTemp));
-
-    // Wrap the kiosk in decorators
-    unique_ptr<Kiosk> activePharmacyKiosk =
-        make_unique<RefrigerationModule>(std::move(pharmacyKioskBase), refTemp);
-    activePharmacyKiosk =
-        make_unique<NetworkModule>(std::move(activePharmacyKiosk));
-
-    cout << "\nUpdated Pharmacy Kiosk Info (After Decoration):\n";
-    activePharmacyKiosk->displayInfo();
-    if (activePharmacyKiosk->describeModules() != "None") {
-        cout << "  🔧 Active Modules:\n"
-             << activePharmacyKiosk->describeModules() << "\n";
-    } else {
-        cout << "  🔧 Active Modules: None\n";
+    // ── EXIT ─────────────────────────────────────────────────────────
+    if (role == 3) {
+      running = false;
+      break;
     }
 
-    // =========================================================================
-    printSectionHeader("4. PAYMENT STRATEGY & ADAPTER PATTERN");
-    // =========================================================================
-
-    // Payment strategy for pharmacy — first purchase
-    cout << "── Payment for Pharmacy Purchase 1 (Insulin) ───────────────\n";
-    activePharmacyKiosk->setPaymentStrategy(choosePaymentStrategy("Pharmacy Purchase 1"));
-
-    Transaction tx1 = activePharmacyKiosk->purchaseItem("P-102"); // Buy Insulin
-    if (tx1.status == TransactionStatus::SUCCESS) {
-        registry.recordTransaction(tx1);
+    // ── ADMIN PANEL ───────────────────────────────────────────────────
+    if (role == 2) {
+      runAdminPanel(foodKioskBase.get(), pharmacyKiosk.get(),
+                    emergencyKiosk.get());
+      continue;
     }
 
-    // Switch payment strategy at runtime — second purchase
-    cout << "\n── Payment for Pharmacy Purchase 2 (First Aid Kit) ─────────\n";
-    activePharmacyKiosk->setPaymentStrategy(choosePaymentStrategy("Pharmacy Purchase 2"));
+    // ── CUSTOMER SHOPPING LOOP ────────────────────────────────────────
+    bool keepShopping = true;
+    while (keepShopping) {
 
-    Transaction tx2 = activePharmacyKiosk->purchaseItem("B-001"); // Buy First Aid Kit
-    if (tx2.status == TransactionStatus::SUCCESS) {
-        registry.recordTransaction(tx2);
-    }
+      // STEP 1: Choose Kiosk
+      printBanner("  STEP 1 — SELECT A KIOSK  ");
+      cout << "\n";
+      cout << "  [1]  🍔  Food Kiosk\n";
+      cout << "           Snacks, beverages & more\n";
+      cout << "           Location: Central Metro Station\n\n";
+      cout << "  [2]  💊  Pharmacy Kiosk\n";
+      cout << "           Medicines & health products (refrigerated storage)\n";
+      cout << "           Location: City Hospital\n\n";
+      cout << "  [3]  🚨  Emergency Kiosk\n";
+      cout << "           Survival tools & basic first aid\n";
+      cout << "           Location: Highway Outpost\n\n";
+      cout << "  [0]  ← Back to role selection\n";
+      cout << "\n";
 
-    // =========================================================================
-    printSectionHeader("5. SYSTEM CONSTRAINTS (PROXY VALIDATION)");
-    // =========================================================================
+      int kioskChoice = readChoice("  Select kiosk [0/1/2/3]: ", 0, 3);
+      if (kioskChoice == 0)
+        break; // back to role menu
 
-    cout << "\n--- Scenario A: Hardware Dependency Failure ---\n";
-    cout << "Attempting to buy Insulin (Requires Refrigeration) from Food Kiosk...\n";
+      Kiosk *selectedKiosk;
+      string kioskLabel;
+      if (kioskChoice == 1) {
+        selectedKiosk = foodKioskBase.get();
+        kioskLabel = "🍔  Food Kiosk";
+      } else if (kioskChoice == 2) {
+        selectedKiosk = pharmacyKiosk.get();
+        kioskLabel = "💊  Pharmacy Kiosk";
+      } else {
+        selectedKiosk = emergencyKiosk.get();
+        kioskLabel = "🚨  Emergency Kiosk";
+      }
 
-    // Add Insulin to Food Kiosk first (proxy allows adding, dispensing fails)
-    foodKioskBase->addProduct(insulin, 1);
-    Transaction tx_temp = foodKioskBase->purchaseItem("P-102");
-    if (tx_temp.status == TransactionStatus::SUCCESS) {
-        registry.recordTransaction(tx_temp);
-    }
+      // STEP 2: Show Products
+      printBanner("  STEP 2 — " + kioskLabel + "  ");
 
-    cout << "\n--- Scenario B: Out-of-Stock Validation ---\n";
-    cout << "── Payment for Food Kiosk purchases ────────────────────────\n";
-    foodKioskBase->setPaymentStrategy(choosePaymentStrategy("Food Kiosk"));
+      vector<string> productIds = showProductMenu(selectedKiosk);
 
-    cout << "\n  Attempting " << (sandwichQty + 1) << " purchases of \""
-         << sandwichName << "\" (stock is " << sandwichQty << ")...\n";
-    for (int i = 0; i < sandwichQty + 1; i++) {
-        Transaction tx = foodKioskBase->purchaseItem("P-202");
+      if (productIds.empty()) {
+        cout << "\n  ⚠  This kiosk has no products at the moment.\n";
+        pressEnterToContinue();
+        continue;
+      }
+
+      cout << "\n  [0]  ← Back to kiosk selection\n\n";
+
+      int productChoice =
+          readChoice("  Enter product number to purchase [0 to go back]: ", 0,
+                     (int)productIds.size());
+
+      if (productChoice == 0)
+        continue;
+
+      string chosenItemId = productIds[productChoice - 1];
+      auto chosenItem = selectedKiosk->getInventory()->getItem(chosenItemId);
+      int chosenStock = selectedKiosk->getInventory()->getStock(chosenItemId);
+
+      // Confirm selection
+      cout << "\n  ─────────────────────────────────────────────────────\n";
+      cout << "  You selected:\n";
+      cout << "    Product      : " << chosenItem->getName() << "\n";
+      cout << "    Price        : Rs." << fixed << setprecision(2)
+           << chosenItem->getPrice() << "\n";
+      cout << "    In Stock     : " << chosenStock << " unit(s)\n";
+      if (chosenItem->requiresRefrigeration())
+        cout << "    Storage Note : ❄  Refrigerated — dispensed from cold "
+                "chain\n";
+      cout << "  ─────────────────────────────────────────────────────\n";
+      cout << "\n  Confirm purchase?\n";
+      cout << "  [1]  Yes — proceed to payment\n";
+      cout << "  [2]  No  — go back to product list\n\n";
+
+      int confirm = readChoice("  Enter your choice [1/2]: ", 1, 2);
+      if (confirm == 2)
+        continue;
+
+      // STEP 2b: How many units?
+      cout << "\n  ─────────────────────────────────────────────────────\n";
+      cout << "  How many units of \"" << chosenItem->getName()
+           << "\" do you want?\n";
+      cout << "  (Available: " << chosenStock
+           << " unit(s)  |  Price per unit: Rs." << fixed << setprecision(2)
+           << chosenItem->getPrice() << ")\n\n";
+
+      int wantedQty = readPositiveInt("  Enter quantity: ");
+
+      // Cap to available stock
+      if (wantedQty > chosenStock) {
+        cout << "\n  ⚠  Only " << chosenStock << " unit(s) available."
+             << " Adjusting quantity to " << chosenStock << ".\n";
+        wantedQty = chosenStock;
+      }
+
+      double totalCost = chosenItem->getPrice() * wantedQty;
+      cout << "\n  Total for " << wantedQty << " unit(s): Rs." << fixed
+           << setprecision(2) << totalCost << "\n";
+      cout << "  ─────────────────────────────────────────────────────\n";
+
+      // STEP 3: Payment (asked once for the whole order)
+      unique_ptr<PaymentProcessor> payProc = choosePayment();
+      selectedKiosk->setPaymentStrategy(std::move(payProc));
+
+      // STEP 4: Execute purchase — one unit at a time
+      printBanner("  PROCESSING YOUR ORDER...  ");
+      int successCount = 0;
+      int failCount = 0;
+      string lastPayMethod;
+
+      for (int u = 0; u < wantedQty; u++) {
+        cout << "  Unit " << (u + 1) << " of " << wantedQty << "...\n";
+        Transaction tx = selectedKiosk->purchaseItem(chosenItemId);
         if (tx.status == TransactionStatus::SUCCESS) {
-            registry.recordTransaction(tx);
+          successCount++;
+          lastPayMethod = tx.paymentMethod;
+          registry.recordTransaction(tx);
+          cout << "    \u2705 Unit " << (u + 1) << " dispensed.\n";
+        } else {
+          failCount++;
+          cout << "    \u274c Unit " << (u + 1)
+               << " failed (out of stock / hardware error).\n";
+          break; // stock exhausted, stop trying
         }
+      }
+
+      // Save all inventories immediately after the order
+      PersistenceManager::saveInventoryToFile(foodKioskBase->getInventory(),
+                                              FOOD_INV_FILE);
+      PersistenceManager::saveInventoryToFile(pharmacyKiosk->getInventory(),
+                                              PHARMA_INV_FILE);
+      PersistenceManager::saveInventoryToFile(emergencyKiosk->getInventory(),
+                                              EMERGENCY_INV_FILE);
+
+      // STEP 5: Order Summary
+      cout << "\n";
+      cout
+          << "  ╔══════════════════════════════════════════════════════════╗\n";
+      if (successCount == wantedQty) {
+        cout << "  ║          ✅   ORDER COMPLETE — ALL UNITS DISPENSED   ✅ "
+                "║\n";
+      } else if (successCount > 0) {
+        cout << "  ║      ⚠   ORDER PARTIAL — SOME UNITS DISPENSED        ⚠  "
+                "║\n";
+      } else {
+        cout << "  ║             ❌   ORDER FAILED — NO UNITS DISPENSED   ❌ "
+                "║\n";
+      }
+      cout
+          << "  ╠══════════════════════════════════════════════════════════╣\n";
+      cout << "  ║  Item            : " << left << setw(37)
+           << chosenItem->getName() << "║\n";
+      cout << "  ║  Units Requested : " << left << setw(37) << wantedQty
+           << "║\n";
+      cout << "  ║  Units Dispensed : " << left << setw(37) << successCount
+           << "║\n";
+      cout << "  ║  Units Failed    : " << left << setw(37) << failCount
+           << "║\n";
+      {
+        ostringstream oss;
+        oss << fixed << setprecision(2)
+            << (successCount * chosenItem->getPrice());
+        cout << "  ║  Amount Charged  : Rs." << left << setw(34) << oss.str()
+             << "║\n";
+      }
+      if (!lastPayMethod.empty())
+        cout << "  ║  Payment Method  : " << left << setw(37) << lastPayMethod
+             << "║\n";
+      cout << "  ║  Inventory File  : Updated ✔                            ║\n";
+      cout
+          << "  ╚══════════════════════════════════════════════════════════╝\n";
+      if (successCount > 0)
+        cout << "  🎉 Please collect your item(s) from the dispenser slot.\n";
+
+      // STEP 6: Continue or exit
+      cout << "\n\n  What would you like to do next?\n\n";
+      cout << "  [1]  Buy another item\n";
+      cout << "  [2]  Exit to main menu\n\n";
+
+      int nextAction = readChoice("  Enter your choice [1/2]: ", 1, 2);
+      if (nextAction == 2)
+        keepShopping = false;
     }
+  }
 
-    cout << "\n--- Scenario C: Hardware Failure After Payment ---\n";
-    string brokenName  = promptString("\n  Jammed product name",  "Jammed Snack");
-    double brokenPrice = promptDouble("  Jammed product price", 10.0);
+  // ── SHUTDOWN ──────────────────────────────────────────────────────────
+  printBanner("  SESSION SUMMARY  ");
+  registry.displayGlobalReport();
 
-    auto brokenItem = make_shared<Product>("P-ERROR", brokenName, brokenPrice);
-    foodKioskBase->addProduct(brokenItem, 5);
-    Transaction tx_err = foodKioskBase->purchaseItem("P-ERROR");
-    if (tx_err.status == TransactionStatus::SUCCESS) {
-        registry.recordTransaction(tx_err);
-    } else {
-        cout << "  🚫 Transaction cancelled\n";
-    }
+  // Save all kiosk inventories on clean exit
+  PersistenceManager::saveInventoryToFile(foodKioskBase->getInventory(),
+                                          FOOD_INV_FILE);
+  PersistenceManager::saveInventoryToFile(pharmacyKiosk->getInventory(),
+                                          PHARMA_INV_FILE);
+  PersistenceManager::saveInventoryToFile(emergencyKiosk->getInventory(),
+                                          EMERGENCY_INV_FILE);
 
-    // =========================================================================
-    printSectionHeader("6. SINGLETON REGISTRY REPORT");
-    // =========================================================================
-    registry.displayGlobalReport();
+  cout << "\n";
+  cout
+      << "  ╔══════════════════════════════════════════════════════════════╗\n";
+  cout << "  ║   🙏  Thank you for using Aura Retail OS!                   ║\n";
+  cout
+      << "  ║       Inventory saved. Session data recorded.                ║\n";
+  cout
+      << "  "
+         "╚══════════════════════════════════════════════════════════════╝\n\n";
 
-    // =========================================================================
-    printSectionHeader("7. SHUTDOWN & PERSISTENCE");
-    // =========================================================================
-    PersistenceManager::saveInventoryToFile(foodProxy.get(), "inventory.json");
-
-    cout << "\n📌 System successfully demonstrates:\n";
-    cout << "   ✔ Modular architecture\n";
-    cout << "   ✔ Design patterns\n";
-    cout << "   ✔ Constraint handling\n";
-    cout << "   ✔ Persistent storage\n\n";
-
-    return 0;
+  return 0;
 }

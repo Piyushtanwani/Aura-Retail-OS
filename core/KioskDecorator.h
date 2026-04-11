@@ -39,12 +39,24 @@ public:
     }
 
     // ─── Delegate Core Operations to Wrappee ────────────────────────────────
+    SecureInventory* getInventory() override {
+        return wrappee_->getInventory();
+    }
+
+    void addProduct(std::shared_ptr<InventoryComponent> item, int qty) override {
+        wrappee_->addProduct(item, qty);
+    }
+
     void setPaymentStrategy(std::unique_ptr<PaymentProcessor> strategy) override {
         wrappee_->setPaymentStrategy(std::move(strategy));
     }
 
     void setDispenser(std::unique_ptr<Dispenser> disp) override {
         wrappee_->setDispenser(std::move(disp));
+    }
+
+    std::string getDispenserType() const override {
+        return wrappee_->getDispenserType();
     }
 
     Transaction purchaseItem(const std::string& itemId) override {

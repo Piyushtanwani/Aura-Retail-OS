@@ -61,9 +61,9 @@ public:
     std::string getLocation() const { return location_; }
 
     // ─── Inventory Access ───────────────────────────────────────────────────
-    SecureInventory* getInventory() { return inventory_.get(); }
+    virtual SecureInventory* getInventory() { return inventory_.get(); }
 
-    void addProduct(std::shared_ptr<InventoryComponent> item, int qty) {
+    virtual void addProduct(std::shared_ptr<InventoryComponent> item, int qty) {
         inventory_->addItem(item, qty);
     }
 
@@ -78,7 +78,7 @@ public:
         dispenser_ = std::move(disp);
     }
 
-    std::string getDispenserType() const {
+    virtual std::string getDispenserType() const {
         return dispenser_ ? dispenser_->getType() : "None";
     }
 
