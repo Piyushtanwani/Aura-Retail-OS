@@ -17,16 +17,13 @@ Aura Retail OS is a modular, extensible C++ simulation of an intelligent retail 
 
 ### Build & Run
 
-```bash
-# Compile (GCC example)
-g++ -std=c++17 -o aura_retail_os \
-    main.cpp \
-    inventory/RealInventory.cpp \
-    inventory/SecureInventory.cpp \
-    persistence/PersistenceManager.cpp \
-    registry/CentralRegistry.cpp
 
+# Compile (GCC example)
+```bash
+g++ -std=c++17 main.cpp inventory/RealInventory.cpp inventory/SecureInventory.cpp persistence/PersistenceManager.cpp registry/CentralRegistry.cpp -o aura_retail_os
+```
 # Run
+```bash
 ./aura_retail_os        # Linux / macOS
 aura_retail_os.exe      # Windows
 ```
