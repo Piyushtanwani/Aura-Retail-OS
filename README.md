@@ -62,8 +62,7 @@ OOP Project/
 │   ├── KioskFactory.h              # Factory Pattern — creates kiosks by type
 │   ├── KioskDecorator.h            # Decorator base — wraps any Kiosk
 │   ├── RefrigerationModule.h       # Decorator: temperature monitoring
-│   ├── NetworkModule.h             # Decorator: connectivity & logging
-│   └── AIRecommendationModule.h    # Decorator: post-purchase suggestions
+│   └── NetworkModule.h             # Decorator: connectivity & logging
 │
 ├── inventory/                      # Inventory domain (Composite + Proxy)
 │   ├── InventoryComponent.h        # Abstract component (Composite root)
@@ -95,7 +94,9 @@ OOP Project/
 │   ├── PersistenceManager.h
 │   └── PersistenceManager.cpp      # Save/load inventory & transactions
 │
-├── inventory.json                  # Persisted inventory data
+├── food_inventory.json             # Persisted food inventory data
+├── pharmacy_inventory.json         # Persisted pharmacy inventory data
+├── emergency_inventory.json        # Persisted emergency inventory data
 └── transactions.json               # Persisted transaction log
 ```
 
@@ -106,7 +107,7 @@ OOP Project/
 | Pattern | Location | Role |
 |---------|----------|------|
 | **Factory** | `KioskFactory` | Creates correct kiosk subclass from a string key |
-| **Decorator** | `KioskDecorator`, `RefrigerationModule`, `NetworkModule`, `AIRecommendationModule` | Adds hardware/software modules without subclassing |
+| **Decorator** | `KioskDecorator`, `RefrigerationModule`, `NetworkModule` | Adds hardware/software modules without subclassing |
 | **Proxy** | `SecureInventory` → `RealInventory` | Guards inventory with logging and validation |
 | **Strategy** | `PaymentContext` + `PaymentProcessor` | Swaps payment method at runtime without if/else chains |
 | **Adapter** | `UPIAdapter`, `CardAdapter`, `WalletAdapter`, `DispenserAdapter` | Bridges incompatible external APIs |
@@ -163,7 +164,9 @@ The simulation collects the following inputs at runtime:
 
 Two JSON files store state between runs:
 
-- **`inventory.json`** — Saved at shutdown; loaded at startup so stock persists.
+- **`food_inventory.json`** — Saved at shutdown; loaded at startup so stock persists.
+- **`pharmacy_inventory.json`** — Saved at shutdown; loaded at startup so stock persists.
+- **`emergency_inventory.json`** — Saved at shutdown; loaded at startup so stock persists.
 - **`transactions.json`** — Appended after every successful transaction; provides an audit trail.
 
 ---
