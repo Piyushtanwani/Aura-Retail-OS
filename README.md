@@ -30,8 +30,6 @@ g++ -std=c++17 main.cpp inventory/RealInventory.cpp inventory/SecureInventory.cp
 aura_retail_os.exe      # Windows
 ```
 
-> **Interactive Mode:** On startup the simulation asks for kiosk IDs, locations, product names, prices, stock quantities, refrigeration temperature, and payment method. Press **Enter** at any prompt to accept the shown default value.
-
 ---
 
 ## ✨ Feature Overview
