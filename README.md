@@ -130,23 +130,20 @@ Every purchase flows through four atomic steps. All steps roll back on failure:
 
 ---
 
-## 🖥 Interactive Prompts (Dynamic Inputs)
+## 🖥 Interactive System UI (CLI Menus)
 
-The simulation collects the following inputs at runtime:
+The application drives the runtime logic via a role-based, text-mode interactive menu. The system guides you automatically through context-aware prompts depending on the role selected:
 
-| Section | Prompt | Default |
-|---------|--------|---------|
-| Section 1 | Food Kiosk ID | `FD-S1` |
-| Section 1 | Food Kiosk Location | `Central Metro Station` |
-| Section 1 | Pharmacy Kiosk ID | `PH-H1` |
-| Section 1 | Pharmacy Kiosk Location | `City Hospital` |
-| Section 2 | Product names & prices (all products) | Pre-filled defaults |
-| Section 2 | Stock quantities (water, sandwich, insulin, kit) | Pre-filled defaults |
-| Section 2 | First Aid Kit bundle ID, name, discount % | `B-001`, `Basic First Aid Kit`, `10%` |
-| Section 3 | Refrigeration temperature (°C) | `4.0` |
-| Section 4 | Payment method (UPI / Card / Wallet) | `1` (UPI) |
-| Section 4 | UPI VPA or card number | `user@aura-upi` |
-| Section 5 | Jammed product name & price | `Jammed Snack`, `10.0` |
+| Flow / Role | Action Step | What the System Requests | Example Input |
+|-------------|-------------|--------------------------|---------------|
+| **Global** | Role Selection | Choose between Customer or Admin mode | `1` (Customer), `2` (Admin) |
+| **Admin** | PIN Authentication | A secret PIN is required to unlock inventory management | `1234` |
+| **Admin** | Kiosk View/Restock | Choose a kiosk to review stock or refill empty products | `1` (Food Kiosk), `4` (View all) |
+| **Admin** | Stock Quantity | Enter the number of units to append to current stock | `20`, `50` |
+| **Customer** | Select Kiosk | Choose the physical kiosk location to shop from | `1` (Food), `2` (Pharmacy) |
+| **Customer** | Add to Cart | Pick an item from the generated catalogue and define quantity | Catalog Number (e.g. `3`), then `2` units |
+| **Customer** | Payment Selection| Choose between UPI, Card, or Wallet APIs | `1` (UPI) |
+| **Customer** | Gateway Details | Provide the respective UPI ID, Card Num, or App name | `user@upi`, `4111222233334444` |
 
 ---
 
