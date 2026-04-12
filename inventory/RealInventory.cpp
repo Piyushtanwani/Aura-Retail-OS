@@ -22,10 +22,12 @@ int RealInventory::getStock(const std::string& itemId) const {
     return (it != stock_.end()) ? it->second : 0;
 }
 
-bool RealInventory::decrementStock(const std::string& itemId) {
-    if (!isInStock(itemId)) return false;
-    stock_[itemId]--;
-    return true;
+bool RealInventory::decrementStock(const std::string& itemId, int quantity) {
+    if (getStock(itemId) >= quantity) {
+        stock_[itemId] -= quantity;
+        return true;
+    }
+    return false;
 }
 
 void RealInventory::incrementStock(const std::string& itemId, int quantity) {

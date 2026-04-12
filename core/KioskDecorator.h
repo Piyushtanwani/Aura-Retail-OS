@@ -59,8 +59,8 @@ public:
         return wrappee_->getDispenserType();
     }
 
-    Transaction purchaseItem(const std::string& itemId) override {
-        return wrappee_->purchaseItem(itemId);
+    Transaction purchaseItem(const std::string& itemId, int quantity = 1) override {
+        return wrappee_->purchaseItem(itemId, quantity);
     }
 
     bool refundTransaction(const Transaction& tx) override {

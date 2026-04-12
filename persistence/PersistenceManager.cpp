@@ -50,6 +50,7 @@ void PersistenceManager::saveTransactionsToFile(const std::vector<Transaction>& 
         file << "      \"id\": \"" << t.transactionId << "\",\n";
         file << "      \"kiosk\": \"" << t.kioskId << "\",\n";
         file << "      \"item\": \"" << t.itemName << "\",\n";
+        file << "      \"quantity\": " << t.quantity << ",\n";
         file << "      \"amount\": " << t.amount << ",\n";
         file << "      \"payment\": \"" << t.paymentMethod << "\",\n";
         file << "      \"status\": \"" << ((t.status == TransactionStatus::SUCCESS) ? "SUCCESS" : "FAILED") << "\"\n";

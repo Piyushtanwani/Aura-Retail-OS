@@ -32,8 +32,8 @@ public:
     // Get the stock count for an item
     virtual int getStock(const std::string& itemId) const = 0;
 
-    // Decrease stock by 1 (for purchase)
-    virtual bool decrementStock(const std::string& itemId) = 0;
+    // Decrease stock (for purchase)
+    virtual bool decrementStock(const std::string& itemId, int quantity = 1) = 0;
 
     // Increase stock (for restock / refund)
     virtual void incrementStock(const std::string& itemId, int quantity = 1) = 0;

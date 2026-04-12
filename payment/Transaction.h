@@ -29,6 +29,7 @@ struct Transaction {
     std::string kioskId;
     std::string itemId;
     std::string itemName;
+    int quantity;
     double amount;
     std::string paymentMethod;
     TransactionStatus status;
@@ -38,11 +39,12 @@ struct Transaction {
                 const std::string& kId,
                 const std::string& iId,
                 const std::string& iName,
+                int qty,
                 double amt,
                 const std::string& payMethod,
                 TransactionStatus st)
         : transactionId(txId), kioskId(kId), itemId(iId), itemName(iName),
-          amount(amt), paymentMethod(payMethod), status(st),
+          quantity(qty), amount(amt), paymentMethod(payMethod), status(st),
           timestamp(std::time(nullptr)) {}
 
     std::string getStatusString() const {
@@ -65,6 +67,7 @@ struct Transaction {
         std::cout << "  ┌─ Transaction [" << transactionId << "]\n"
                   << "  │  Kiosk:   " << kioskId << "\n"
                   << "  │  Item:    " << itemName << " (" << itemId << ")\n"
+                  << "  │  Units:   " << quantity << "\n"
                   << "  │  Amount:  ₹" << amount << "\n"
                   << "  │  Payment: " << paymentMethod << "\n"
                   << "  │  Status:  " << getStatusString() << "\n"

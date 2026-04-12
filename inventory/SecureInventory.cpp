@@ -68,20 +68,21 @@ int SecureInventory::getStock(const std::string& itemId) const {
 }
 
 // ─── decrementStock ─────────────────────────────────────────────────────────
-bool SecureInventory::decrementStock(const std::string& itemId) {
+bool SecureInventory::decrementStock(const std::string& itemId, int quantity) {
     logAccess("DECREMENT_STOCK", itemId);
 
     if (!validateItemExists(itemId)) return false;
 
-    if (!realInventory_->isInStock(itemId)) {
+    if (realInventory_->getStock(itemId) < quantity) {
         std::cout << "🛡️  [SecureInventory] ❌ DENIED: Item \"" << itemId
-                  << "\" is OUT OF STOCK. Cannot decrement.\n";
+                  << "\" has insufficient stock (" << realInventory_->getStock(itemId) 
+                  << " < " << quantity << "). Cannot decrement.\n";
         return false;
     }
 
-    bool result = realInventory_->decrementStock(itemId);
+    bool result = realInventory_->decrementStock(itemId, quantity);
     if (result) {
-        std::cout << "🛡️  [SecureInventory] ✅ Stock decremented. Remaining: "
+        std::cout << "🛡️  [SecureInventory] ✅ Stock decremented by " << quantity << ". Remaining: "
                   << realInventory_->getStock(itemId) << "\n";
     }
     return result;

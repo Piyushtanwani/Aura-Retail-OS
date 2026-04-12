@@ -85,7 +85,7 @@ public:
     // ─── Core Operations ────────────────────────────────────────────────────
 
     // Purchase an item: check stock → pay → dispense → record
-    virtual Transaction purchaseItem(const std::string& itemId);
+    virtual Transaction purchaseItem(const std::string& itemId, int quantity = 1);
 
     // Refund a transaction
     virtual bool refundTransaction(const Transaction& tx);
@@ -124,7 +124,9 @@ public:
 
 // ─── purchaseItem Implementation ────────────────────────────────────────────
 // Implements atomic transaction: stock check → payment → dispense → record
-inline Transaction Kiosk::purchaseItem(const std::string& itemId) {
+inline Transaction Kiosk::purchaseItem(const std::string& itemId, int quantity) {
+    if (quantity <= 0) quantity = 1;
+    
     std::cout << "\n🛒 ═══════════════════════════════════════════════\n";
     std::cout << "🛒  PURCHASE INITIATED — Kiosk: " << kioskId_ << "\n";
     std::cout << "🛒 ═══════════════════════════════════════════════\n";
@@ -133,22 +135,23 @@ inline Transaction Kiosk::purchaseItem(const std::string& itemId) {
     if (!item) {
         std::cout << "  ❌ Item not found in catalogue.\n";
         return Transaction(generateTransactionId(), kioskId_, itemId, "UNKNOWN",
-                           0.0, "N/A", TransactionStatus::FAILED);
+                           quantity, 0.0, "N/A", TransactionStatus::FAILED);
     }
 
     std::string txId = generateTransactionId();
-    double price = item->getPrice();
+    double unitPrice = item->getPrice();
+    double totalPrice = unitPrice * quantity;
     std::string name = item->getName();
 
     // Step 1: Check stock (via proxy)
     std::cout << "\n  📋 Step 1: Checking stock...\n";
-    if (!inventory_->isInStock(itemId)) {
-        std::cout << "  ❌ OUT OF STOCK!\n";
+    int avail = inventory_->getStock(itemId);
+    if (avail < quantity) {
+        std::cout << "  ❌ INSUFFICIENT STOCK! Requested: " << quantity << ", Available: " << avail << "\n";
         std::cout << "  🚫 Skipping payment process. Purchase aborted.\n";
-        return Transaction(txId, kioskId_, itemId, name, price,
+        return Transaction(txId, kioskId_, itemId, name, quantity, totalPrice,
                            paymentContext_.getCurrentMethod(), TransactionStatus::FAILED);
     } else {
-        int avail = inventory_->getStock(itemId);
         std::cout << "  ✅ Stock available: " << avail << " units\n";
     }
 
@@ -157,45 +160,54 @@ inline Transaction Kiosk::purchaseItem(const std::string& itemId) {
         std::cout << "  ❄️  Required refrigeration module NOT ACTIVE\n";
         std::cout << "  ❌ Cannot dispense item\n";
         std::cout << "  🚫 Transaction aborted\n";
-        return Transaction(txId, kioskId_, itemId, name, price,
+        return Transaction(txId, kioskId_, itemId, name, quantity, totalPrice,
                            paymentContext_.getCurrentMethod(), TransactionStatus::FAILED);
     }
 
     // Step 2: Process payment (via strategy)
-    std::cout << "\n  💰 Step 2: Processing payment...\n";
-    bool paymentOk = paymentContext_.pay(price);
+    std::cout << "\n  💰 Step 2: Processing payment of Rs." << totalPrice << "...\n";
+    bool paymentOk = paymentContext_.pay(totalPrice);
     if (!paymentOk) {
         std::cout << "  ❌ Payment FAILED! Purchase aborted.\n";
-        return Transaction(txId, kioskId_, itemId, name, price,
+        return Transaction(txId, kioskId_, itemId, name, quantity, totalPrice,
                            paymentContext_.getCurrentMethod(), TransactionStatus::FAILED);
     }
 
     // Step 3: Decrement stock (atomic — rollback payment if this fails)
     std::cout << "\n  📦 Step 3: Updating inventory...\n";
-    bool stockOk = inventory_->decrementStock(itemId);
+    bool stockOk = inventory_->decrementStock(itemId, quantity);
     if (!stockOk) {
         std::cout << "  ⚠️  Stock update failed! Rolling back payment...\n";
-        paymentContext_.refund(price);
-        return Transaction(txId, kioskId_, itemId, name, price,
+        paymentContext_.refund(totalPrice);
+        return Transaction(txId, kioskId_, itemId, name, quantity, totalPrice,
                            paymentContext_.getCurrentMethod(), TransactionStatus::FAILED);
     }
 
-    // Step 4: Dispense item (rollback both if this fails)
-    std::cout << "\n  ⚙️  Step 4: Dispensing item...\n";
-    bool dispenseOk = dispenseItem(itemId, name);
+    // Step 4: Dispense item(s) (rollback both if this fails)
+    std::cout << "\n  ⚙️  Step 4: Dispensing item(s)...\n";
+    int dispensedCount = 0;
+    bool dispenseOk = true;
+    for (int i = 0; i < quantity; ++i) {
+        if (!dispenseItem(itemId, name)) {
+            dispenseOk = false;
+            break;
+        }
+        dispensedCount++;
+    }
+    
     if (!dispenseOk) {
-        std::cout << "  ⚠️  Dispensing failed!\n";
+        std::cout << "  ⚠️  Hardware dispensing failed after " << dispensedCount << " units!\n";
         std::cout << "  🔄 Rolling back transaction...\n";
-        inventory_->incrementStock(itemId, 1);
+        inventory_->incrementStock(itemId, quantity);
         std::cout << "  💰 Refund initiated...\n";
-        paymentContext_.refund(price);
-        return Transaction(txId, kioskId_, itemId, name, price,
+        paymentContext_.refund(totalPrice);
+        return Transaction(txId, kioskId_, itemId, name, quantity, totalPrice,
                            paymentContext_.getCurrentMethod(), TransactionStatus::FAILED);
     }
 
     // Success!
-    std::cout << "\n  ✅ PURCHASE COMPLETE! Transaction: " << txId << "\n";
-    return Transaction(txId, kioskId_, itemId, name, price,
+    std::cout << "\n  ✅ PURCHASE COMPLETE (" << quantity << " units)! Transaction: " << txId << "\n";
+    return Transaction(txId, kioskId_, itemId, name, quantity, totalPrice,
                        paymentContext_.getCurrentMethod(), TransactionStatus::SUCCESS);
 }
 
@@ -211,7 +223,7 @@ inline bool Kiosk::refundTransaction(const Transaction& tx) {
     }
 
     // Step 1: Refund payment
-    std::cout << "\n  💰 Step 1: Refunding payment...\n";
+    std::cout << "\n  💰 Step 1: Refunding payment of Rs." << tx.amount << "...\n";
     bool refundOk = paymentContext_.refund(tx.amount);
     if (!refundOk) {
         std::cout << "  ❌ Refund FAILED!\n";
@@ -219,8 +231,8 @@ inline bool Kiosk::refundTransaction(const Transaction& tx) {
     }
 
     // Step 2: Restore stock
-    std::cout << "\n  📦 Step 2: Restoring stock...\n";
-    inventory_->incrementStock(tx.itemId, 1);
+    std::cout << "\n  📦 Step 2: Restoring stock (" << tx.quantity << " units)...\n";
+    inventory_->incrementStock(tx.itemId, tx.quantity);
 
     std::cout << "\n  ✅ REFUND COMPLETE for transaction " << tx.transactionId << "\n";
     return true;

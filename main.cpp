@@ -237,48 +237,6 @@ unique_ptr<PaymentProcessor> choosePayment() {
   }
 }
 
-// ─── Print large SUCCESS / FAILED result banner ──────────────────────────────
-void printTransactionResult(const Transaction &tx) {
-  cout << "\n";
-  if (tx.status == TransactionStatus::SUCCESS) {
-    cout << "  ╔══════════════════════════════════════════════════════════╗\n";
-    cout << "  ║                                                          ║\n";
-    cout << "  ║          ✅   PAYMENT SUCCESSFUL   ✅                   ║\n";
-    cout << "  ║                                                          ║\n";
-    cout << "  ╠══════════════════════════════════════════════════════════╣\n";
-    cout << "  ║  Transaction ID : " << left << setw(38) << tx.transactionId
-         << "║\n";
-    cout << "  ║  Item Purchased : " << left << setw(38) << tx.itemName
-         << "║\n";
-    cout << "  ║  Amount Paid    : Rs." << left << setw(35) << fixed
-         << setprecision(2) << tx.amount << "║\n";
-    cout << "  ║  Payment Method : " << left << setw(38) << tx.paymentMethod
-         << "║\n";
-    cout << "  ║  Timestamp      : " << left << setw(38)
-         << tx.getTimestampString() << "║\n";
-    cout << "  ║                                                          ║\n";
-    cout << "  ║  🎉 Thank you for shopping at Aura Retail OS!           ║\n";
-    cout << "  ║     Please collect your item from the dispenser slot.   ║\n";
-    cout << "  ╚══════════════════════════════════════════════════════════╝\n";
-  } else {
-    cout << "  ╔══════════════════════════════════════════════════════════╗\n";
-    cout << "  ║                                                          ║\n";
-    cout << "  ║            ❌   PAYMENT FAILED   ❌                     ║\n";
-    cout << "  ║                                                          ║\n";
-    cout << "  ╠══════════════════════════════════════════════════════════╣\n";
-    cout << "  ║  Transaction ID : " << left << setw(38) << tx.transactionId
-         << "║\n";
-    cout << "  ║  Item           : " << left << setw(38) << tx.itemName
-         << "║\n";
-    cout << "  ║  Reason         : Item out of stock, payment declined,  ║\n";
-    cout << "  ║                   or required hardware not available.   ║\n";
-    cout << "  ║                                                          ║\n";
-    cout << "  ║  ℹ  You have NOT been charged.                          ║\n";
-    cout << "  ║     Please try again or choose a different item.        ║\n";
-    cout << "  ╚══════════════════════════════════════════════════════════╝\n";
-  }
-}
-
 // ─── Admin Panel ─────────────────────────────────────────────────────────────
 void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
                    Kiosk *emergencyKiosk) {
@@ -654,26 +612,25 @@ int main() {
       unique_ptr<PaymentProcessor> payProc = choosePayment();
       selectedKiosk->setPaymentStrategy(std::move(payProc));
 
-      // STEP 4: Execute purchase — one unit at a time
+      // STEP 4: Execute purchase — batch in a single transaction
       printBanner("  PROCESSING YOUR ORDER...  ");
       int successCount = 0;
       int failCount = 0;
       string lastPayMethod;
 
-      for (int u = 0; u < wantedQty; u++) {
-        cout << "  Unit " << (u + 1) << " of " << wantedQty << "...\n";
-        Transaction tx = selectedKiosk->purchaseItem(chosenItemId);
-        if (tx.status == TransactionStatus::SUCCESS) {
-          successCount++;
-          lastPayMethod = tx.paymentMethod;
-          registry.recordTransaction(tx);
-          cout << "    \u2705 Unit " << (u + 1) << " dispensed.\n";
-        } else {
-          failCount++;
-          cout << "    \u274c Unit " << (u + 1)
-               << " failed (out of stock / hardware error).\n";
-          break; // stock exhausted, stop trying
-        }
+      Transaction tx = selectedKiosk->purchaseItem(chosenItemId, wantedQty);
+      if (tx.status == TransactionStatus::SUCCESS) {
+        successCount = wantedQty;
+        lastPayMethod = tx.paymentMethod;
+        registry.recordTransaction(tx);
+        cout << "    \u2705 " << wantedQty
+             << " unit(s) dispensed and grouped in a single transaction.\n";
+      } else {
+        // If transaction failed, we assume 0 units dispensed since it's atomic
+        // now.
+        failCount = wantedQty;
+        cout << "    \u274c Order failed (out of stock, payment declined, or "
+                "hardware error).\n";
       }
 
       // Save all inventories immediately after the order
@@ -686,41 +643,60 @@ int main() {
 
       // STEP 5: Order Summary
       cout << "\n";
-      cout
-          << "  ╔══════════════════════════════════════════════════════════╗\n";
-      if (successCount == wantedQty) {
-        cout << "  ║          ✅   ORDER COMPLETE — ALL UNITS DISPENSED   ✅ "
-                "║\n";
+      cout << "  "
+              "╔══════════════════════════════════════════════════════════════╗"
+              "\n";
+      if (successCount == wantedQty && successCount > 0) {
+        cout << "  ║              ✅   PAYMENT SUCCESSFUL   ✅                 "
+                "   ║\n";
+        cout << "  ║      ✅   ORDER COMPLETE — ALL UNITS DISPENSED   ✅       "
+                "   ║\n";
       } else if (successCount > 0) {
-        cout << "  ║      ⚠   ORDER PARTIAL — SOME UNITS DISPENSED        ⚠  "
-                "║\n";
+        cout << "  ║         ⚠   PAYMENT PARTIALLY SUCCESSFUL   ⚠              "
+                "   ║\n";
+        cout << "  ║         ⚠   ORDER PARTIAL — SOME DISPENSED FAILED  ⚠      "
+                "   ║\n";
       } else {
-        cout << "  ║             ❌   ORDER FAILED — NO UNITS DISPENSED   ❌ "
-                "║\n";
+        cout << "  ║                ❌   PAYMENT FAILED   ❌                   "
+                "   ║\n";
+        cout << "  ║             ❌  ORDER FAILED — NO UNITS DISPENSED  ❌     "
+                "   ║\n";
       }
-      cout
-          << "  ╠══════════════════════════════════════════════════════════╣\n";
-      cout << "  ║  Item            : " << left << setw(37)
-           << chosenItem->getName() << "║\n";
-      cout << "  ║  Units Requested : " << left << setw(37) << wantedQty
-           << "║\n";
-      cout << "  ║  Units Dispensed : " << left << setw(37) << successCount
-           << "║\n";
-      cout << "  ║  Units Failed    : " << left << setw(37) << failCount
-           << "║\n";
+      cout << "  "
+              "╠══════════════════════════════════════════════════════════════╣"
+              "\n";
+      cout << "  ║  Item            : " << left << setw(40)
+           << chosenItem->getName() << "  ║\n";
+      cout << "  ║  Units Requested : " << left << setw(40) << wantedQty
+           << "  ║\n";
+      cout << "  ║  Units Dispensed : " << left << setw(40) << successCount
+           << "  ║\n";
+      cout << "  ║  Units Failed    : " << left << setw(40) << failCount
+           << "  ║\n";
       {
         ostringstream oss;
         oss << fixed << setprecision(2)
             << (successCount * chosenItem->getPrice());
-        cout << "  ║  Amount Charged  : Rs." << left << setw(34) << oss.str()
-             << "║\n";
+        cout << "  ║  Amount Charged  : Rs." << left << setw(37) << oss.str()
+             << "  ║\n";
       }
       if (!lastPayMethod.empty())
-        cout << "  ║  Payment Method  : " << left << setw(37) << lastPayMethod
-             << "║\n";
-      cout << "  ║  Inventory File  : Updated ✔                            ║\n";
-      cout
-          << "  ╚══════════════════════════════════════════════════════════╝\n";
+        cout << "  ║  Payment Method  : " << left << setw(40) << lastPayMethod
+             << "  ║\n";
+      cout << "  ║  Inventory File  : Updated ✔                                "
+              " ║\n";
+      if (successCount == 0) {
+        cout << "  ║                                                           "
+                "   ║\n";
+        cout << "  ║  ℹ  You have NOT been charged.                            "
+                "   ║\n";
+        cout << "  ║     Please try again or choose a different item.          "
+                "   ║\n";
+      }
+      cout << "  "
+              "╚══════════════════════════════════════════════════════════════╝"
+              "\n";
+
       if (successCount > 0)
         cout << "  🎉 Please collect your item(s) from the dispenser slot.\n";
 
@@ -750,7 +726,8 @@ int main() {
   cout << "\n";
   cout
       << "  ╔══════════════════════════════════════════════════════════════╗\n";
-  cout << "  ║   🙏  Thank you for using Aura Retail OS!                   ║\n";
+  cout
+      << "  ║   🙏  Thank you for using Aura Retail OS!                    ║\n";
   cout
       << "  ║       Inventory saved. Session data recorded.                ║\n";
   cout

@@ -1,7 +1,7 @@
 {
   "inventory": [
       {"id": "P-303", "name": "Waterproof Matches", "price": 50.000000, "stock": 30},
-      {"id": "P-302", "name": "Survival Blanket", "price": 400.000000, "stock": 0},
+      {"id": "P-302", "name": "Survival Blanket", "price": 400.000000, "stock": 10},
       {"id": "P-301", "name": "LED Flashlight", "price": 250.000000, "stock": 15}
   ]
 }

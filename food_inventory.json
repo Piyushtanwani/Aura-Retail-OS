@@ -1,6 +1,6 @@
 {
   "inventory": [
-      {"id": "P-205", "name": "Hot Coffee", "price": 60.000000, "stock": 8},
+      {"id": "P-205", "name": "Hot Coffee", "price": 60.000000, "stock": 4},
       {"id": "P-204", "name": "Potato Chips", "price": 30.000000, "stock": 10},
       {"id": "P-203", "name": "Cold Cola Can", "price": 40.000000, "stock": 15},
       {"id": "P-202", "name": "Veg Sandwich", "price": 120.000000, "stock": 5},

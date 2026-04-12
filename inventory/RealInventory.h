@@ -30,7 +30,7 @@ public:
     void addItem(std::shared_ptr<InventoryComponent> item, int quantity) override;
     bool isInStock(const std::string& itemId) const override;
     int getStock(const std::string& itemId) const override;
-    bool decrementStock(const std::string& itemId) override;
+    bool decrementStock(const std::string& itemId, int quantity = 1) override;
     void incrementStock(const std::string& itemId, int quantity = 1) override;
     std::shared_ptr<InventoryComponent> getItem(const std::string& itemId) const override;
     void displayCatalogue() const override;
