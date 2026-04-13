@@ -45,6 +45,9 @@ public:
     void displayCatalogue() const override;
 
     std::vector<std::string> getAllItemIds() const override;
+
+    // Direct stock setter for persistence layer
+    void setStock(const std::string& itemId, int quantity);
 };
 
 #endif // SECURE_INVENTORY_H

@@ -1,6 +1,7 @@
 #include "PersistenceManager.h"
 #include "../inventory/Product.h"
 #include "../inventory/Bundle.h"
+#include "../inventory/SecureInventory.h"
 #include <fstream>
 #include <iostream>
 #include <sstream>
@@ -79,7 +80,8 @@ double extractDoubleValue(const std::string& line, const std::string& key) {
     size_t keyPos = line.find("\"" + key + "\":");
     if (keyPos == std::string::npos) return 0.0;
     size_t startVal = keyPos + key.length() + 2;
-    while(startVal < line.length() && (line[startVal] == ' ' || line[startVal] == '\"')) startVal++;
+    // Skip colon, spaces, and quotes to reach the actual numeric value
+    while(startVal < line.length() && (line[startVal] == ' ' || line[startVal] == '\"' || line[startVal] == ':')) startVal++;
     
     size_t endVal = startVal;
     while(endVal < line.length() && (isdigit(line[endVal]) || line[endVal] == '.')) endVal++;
@@ -94,29 +96,50 @@ void PersistenceManager::loadInventoryFromFile(InventoryInterface* inventory, co
 
     std::ifstream file(filename);
     if (!file.is_open()) {
-        std::cout << "  ℹ️  [PersistenceManager] No previous inventory file found (" << filename << "). Proceeding fresh.\n";
+        std::cout << "  \u2139\ufe0f  [PersistenceManager] No previous inventory file found (" << filename << "). Proceeding fresh.\n";
         return;
     }
+
+    // Cast to SecureInventory so we can call setStock() directly
+    SecureInventory* secInv = dynamic_cast<SecureInventory*>(inventory);
 
     std::string line;
     while (std::getline(file, line)) {
         if (line.find("{\"id\"") != std::string::npos) {
-            std::string id = extractStringValue(line, "id");
-            std::string name = extractStringValue(line, "name");
-            double price = extractDoubleValue(line, "price");
-            int stock = (int)extractDoubleValue(line, "stock");
+            std::string id    = extractStringValue(line, "id");
+            std::string name  = extractStringValue(line, "name");
+            double price      = extractDoubleValue(line, "price");
+            int stock         = (int)extractDoubleValue(line, "stock");
 
-            if (line.find("\"items\":") != std::string::npos) {
-                // It's a bundle. We won't fully parse nested children IDs in this naive parser for time constraints, 
-                // but we will create the abstract bundle wrapper to represent the item.
-                // A flawless parser would regex array elements.
-                auto bundle = std::make_shared<Bundle>(id, name);
-                inventory->addItem(bundle, stock);
-                std::cout << "  📥 Loaded historical Bundle: " << name << "\n";
+            if (id.empty()) continue;
+
+            // If the item already exists in memory (hardcoded default product
+            // or bundle), just restore its saved stock directly.
+            // This preserves all item metadata (bundle children, refrigeration
+            // flag, etc.) that was set up in main().
+            auto existing = inventory->getItem(id);
+            if (existing != nullptr) {
+                if (secInv) {
+                    secInv->setStock(id, stock); // direct set — no proxy validation
+                } else {
+                    // Fallback: decrement then increment
+                    int cur = inventory->getStock(id);
+                    if (cur > 0) inventory->decrementStock(id, cur);
+                    if (stock > 0) inventory->incrementStock(id, stock);
+                }
+                std::cout << "  \U0001f4e5 [PersistenceManager] Restored stock for \""
+                          << name << "\" -> " << stock << " unit(s)\n";
             } else {
-                auto product = std::make_shared<Product>(id, name, price);
-                inventory->addItem(product, stock);
-                std::cout << "  📥 Loaded historical Product: " << name << "\n";
+                // Item not in memory — was added by admin at runtime. Add fresh.
+                if (line.find("\"items\":") != std::string::npos) {
+                    auto bundle = std::make_shared<Bundle>(id, name);
+                    inventory->addItem(bundle, stock);
+                    std::cout << "  \U0001f4e5 [PersistenceManager] Loaded admin-added Bundle: " << name << "\n";
+                } else {
+                    auto product = std::make_shared<Product>(id, name, price);
+                    inventory->addItem(product, stock);
+                    std::cout << "  \U0001f4e5 [PersistenceManager] Loaded admin-added Product: " << name << "\n";
+                }
             }
         }
     }

@@ -3,8 +3,8 @@
     {
       "id": "FD-S1-TX-1",
       "kiosk": "FD-S1",
-      "item": "Potato Chips",
-      "quantity": 10,
+      "item": "Hot Coffee",
+      "quantity": 5,
       "amount": 300,
       "payment": "UPI (piyush@paytm)",
       "status": "SUCCESS"

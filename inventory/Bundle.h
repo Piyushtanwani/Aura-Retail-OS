@@ -41,7 +41,16 @@ public:
     // --- InventoryComponent interface ---
 
     std::string getId() const override { return id_; }
-    std::string getName() const override { return name_; }
+    std::string getName() const override {
+        if (children_.empty()) return name_;
+        std::string fullName = name_ + " (";
+        for (size_t i = 0; i < children_.size(); ++i) {
+            fullName += children_[i]->getName();
+            if (i + 1 < children_.size()) fullName += ", ";
+        }
+        fullName += ")";
+        return fullName;
+    }
 
     // Price = sum of children minus discount
     double getPrice() const override {

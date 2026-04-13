@@ -118,3 +118,7 @@ void SecureInventory::displayCatalogue() const {
 std::vector<std::string> SecureInventory::getAllItemIds() const {
     return realInventory_->getAllItemIds();
 }
+
+void SecureInventory::setStock(const std::string& itemId, int quantity) {
+    realInventory_->setStock(itemId, quantity);
+}

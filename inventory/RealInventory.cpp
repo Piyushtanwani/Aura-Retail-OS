@@ -58,3 +58,9 @@ std::vector<std::string> RealInventory::getAllItemIds() const {
     }
     return ids;
 }
+
+void RealInventory::setStock(const std::string& itemId, int quantity) {
+    if (stock_.find(itemId) != stock_.end()) {
+        stock_[itemId] = quantity;
+    }
+}

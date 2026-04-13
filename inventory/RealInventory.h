@@ -36,6 +36,9 @@ public:
     void displayCatalogue() const override;
 
     std::vector<std::string> getAllItemIds() const override;
+
+    // Direct stock setter — bypasses proxy validation, used only by PersistenceManager
+    void setStock(const std::string& itemId, int quantity);
 };
 
 #endif // REAL_INVENTORY_H

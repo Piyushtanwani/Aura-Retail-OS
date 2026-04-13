@@ -145,11 +145,11 @@ vector<string> showProductMenu(Kiosk *kiosk, bool showOutOfStock = true) {
   ostringstream table;
   table << "\n";
   table
-      << "  ┌──────┬──────────────────────────────┬──────────┬─────────────┐\n";
+      << "  ┌──────┬───────────────────────────────────────────────────────────────────────────┬──────────┬─────────────┐\n";
   table
-      << "  │  No. │  Product Name                │  Price   │  Stock      │\n";
+      << "  │  No. │  Product Name                                                             │  Price   │  Stock      │\n";
   table
-      << "  ├──────┼──────────────────────────────┼──────────┼─────────────┤\n";
+      << "  ├──────┼───────────────────────────────────────────────────────────────────────────┼──────────┼─────────────┤\n";
 
   int num = 1;
   bool hasRefrigerated = false;
@@ -168,7 +168,7 @@ vector<string> showProductMenu(Kiosk *kiosk, bool showOutOfStock = true) {
       nameVisLen += 2;               // " " + emoji visually takes 2 columns
       hasRefrigerated = true;
     }
-    int namePad = 28 - nameVisLen;
+    int namePad = 73 - nameVisLen;
     if (namePad > 0)
       paddedName.append(namePad, ' ');
 
@@ -193,7 +193,7 @@ vector<string> showProductMenu(Kiosk *kiosk, bool showOutOfStock = true) {
   }
 
   table
-      << "  └──────┴──────────────────────────────┴──────────┴─────────────┘\n";
+      << "  └──────┴───────────────────────────────────────────────────────────────────────────┴──────────┴─────────────┘\n";
 
   // Now that all inline proxy logs have printed sequentially, print the clean
   // table grid
@@ -273,9 +273,9 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
   while (adminRunning) {
     printBanner("  ADMIN PANEL — INVENTORY MANAGEMENT  ");
     cout << "\n";
-    cout << "  [1]  Restock Food Kiosk        (Central Metro Station)\n";
-    cout << "  [2]  Restock Pharmacy Kiosk    (City Hospital)\n";
-    cout << "  [3]  Restock Emergency Kiosk   (Highway Outpost)\n";
+    cout << "  [1]  Manage Food Kiosk        (Central Metro Station)\n";
+    cout << "  [2]  Manage Pharmacy Kiosk    (City Hospital)\n";
+    cout << "  [3]  Manage Emergency Kiosk   (Highway Outpost)\n";
     cout << "  [4]  View all kiosk stock\n";
     cout << "  [5]  Exit Admin Panel\n";
     cout << "\n";
@@ -299,81 +299,186 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
       continue;
     }
 
-    // Restock flow
+    // Manage flow
     Kiosk *targetKiosk;
     string targetLabel;
+    string saveFile;
     if (adminChoice == 1) {
       targetKiosk = foodKiosk;
       targetLabel = "Food Kiosk \u2014 Central Metro Station";
+      saveFile = FOOD_INV_FILE;
     } else if (adminChoice == 2) {
       targetKiosk = pharmacyKiosk;
       targetLabel = "Pharmacy Kiosk \u2014 City Hospital";
+      saveFile = PHARMA_INV_FILE;
     } else {
       targetKiosk = emergencyKiosk;
       targetLabel = "Emergency Kiosk \u2014 Highway Outpost";
-    }
-
-    printBanner("  RESTOCK: " + targetLabel + "  ", '-');
-    vector<string> itemIds = showProductMenu(targetKiosk);
-
-    if (itemIds.empty()) {
-      cout << "\n  ⚠  No items found in this kiosk.\n";
-      pressEnterToContinue();
-      continue;
-    }
-
-    cout << "\n  [0]  Cancel — go back\n\n";
-
-    int itemChoice = readChoice("  Select item to restock [0 to cancel]: ", 0,
-                                (int)itemIds.size());
-
-    if (itemChoice == 0)
-      continue;
-
-    string selectedId = itemIds[itemChoice - 1];
-    auto selectedItem = targetKiosk->getInventory()->getItem(selectedId);
-    int currentStock = targetKiosk->getInventory()->getStock(selectedId);
-
-    cout << "\n  ─────────────────────────────────────────────────────\n";
-    cout << "  Item          : " << selectedItem->getName() << "\n";
-    cout << "  Current Stock : " << currentStock << " unit(s)\n";
-    cout << "  ─────────────────────────────────────────────────────\n\n";
-
-    int qty = readPositiveInt("  Enter quantity to add (e.g. 10, 50): ");
-
-    // Confirm before applying
-    cout << "\n  Confirm: Add " << qty << " unit(s) of \""
-         << selectedItem->getName() << "\" to stock?\n";
-    cout << "  [1]  Yes — apply restock\n";
-    cout << "  [2]  No  — cancel\n\n";
-
-    int confirm = readChoice("  Confirm [1/2]: ", 1, 2);
-    if (confirm == 2) {
-      cout << "  Restock cancelled.\n";
-      pressEnterToContinue();
-      continue;
-    }
-
-    targetKiosk->restockInventory(selectedId, qty);
-
-    // Save immediately \u2014 admin changes must not be lost on unexpected
-    // close
-    string saveFile;
-    if (adminChoice == 1)
-      saveFile = FOOD_INV_FILE;
-    else if (adminChoice == 2)
-      saveFile = PHARMA_INV_FILE;
-    else
       saveFile = EMERGENCY_INV_FILE;
+    }
 
-    PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
-                                            saveFile);
+    bool manageRunning = true;
+    while (manageRunning) {
+      printBanner("  MANAGE: " + targetLabel + "  ", '-');
+      cout << "\n";
+      cout << "  [1]  Restock Existing Product\n";
+      cout << "  [2]  Add New Product\n";
+      cout << "  [3]  Manage Kiosk Bundle(s)\n";
+      cout << "  [0]  Back to Kiosk Selection\n\n";
 
-    int newStock = targetKiosk->getInventory()->getStock(selectedId);
-    cout << "\n  ✅ Restock complete! Inventory saved to disk.\n";
-    cout << "     \"" << selectedItem->getName()
-         << "\" — New stock: " << newStock << " unit(s)\n";
-    pressEnterToContinue();
+      int manageChoice = readChoice("  Enter choice [0/1/2/3]: ", 0, 3);
+      if (manageChoice == 0) {
+        manageRunning = false;
+        continue;
+      }
+
+      if (manageChoice == 1) {
+        printBanner("  RESTOCK: " + targetLabel + "  ", '-');
+        vector<string> itemIds = showProductMenu(targetKiosk);
+
+        if (itemIds.empty()) {
+          cout << "\n  ⚠  No items found in this kiosk.\n";
+          pressEnterToContinue();
+          continue;
+        }
+
+        cout << "\n  [0]  Cancel — go back\n\n";
+
+        int itemChoice = readChoice("  Select item to restock [0 to cancel]: ", 0,
+                                    (int)itemIds.size());
+
+        if (itemChoice == 0)
+          continue;
+
+        string selectedId = itemIds[itemChoice - 1];
+        auto selectedItem = targetKiosk->getInventory()->getItem(selectedId);
+        int currentStock = targetKiosk->getInventory()->getStock(selectedId);
+
+        cout << "\n  ─────────────────────────────────────────────────────\n";
+        cout << "  Item          : " << selectedItem->getName() << "\n";
+        cout << "  Current Stock : " << currentStock << " unit(s)\n";
+        cout << "  ─────────────────────────────────────────────────────\n\n";
+
+        int qty = readPositiveInt("  Enter quantity to add (e.g. 10, 50): ");
+
+        // Confirm before applying
+        cout << "\n  Confirm: Add " << qty << " unit(s) of \""
+             << selectedItem->getName() << "\" to stock?\n";
+        cout << "  [1]  Yes — apply restock\n";
+        cout << "  [2]  No  — cancel\n\n";
+
+        int confirm = readChoice("  Confirm [1/2]: ", 1, 2);
+        if (confirm == 2) {
+          cout << "  Restock cancelled.\n";
+          pressEnterToContinue();
+          continue;
+        }
+
+        targetKiosk->restockInventory(selectedId, qty);
+        PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
+
+        int newStock = targetKiosk->getInventory()->getStock(selectedId);
+        cout << "\n  ✅ Restock complete! Inventory saved to disk.\n";
+        cout << "     \"" << selectedItem->getName()
+             << "\" — New stock: " << newStock << " unit(s)\n";
+        pressEnterToContinue();
+      } else if (manageChoice == 2) {
+        printBanner("  ADD NEW PRODUCT TO KIOSK  ", '-');
+        string newId = readNonEmpty("  Enter Product ID (e.g. P-999): ");
+        
+        if (targetKiosk->getInventory()->getItem(newId) != nullptr) {
+          cout << "\n  ❌ Product ID already exists in this kiosk.\n";
+          pressEnterToContinue();
+          continue;
+        }
+
+        string newName = readNonEmpty("  Enter Product Name: ");
+        cout << "  Enter Price: ";
+        string rawPrice;
+        getline(cin, rawPrice);
+        double price = 0.0;
+        try { price = stod(rawPrice); } catch (...) { price = 10.0; }
+        
+        cout << "  Requires Refrigeration? [1] Yes [2] No: ";
+        int refChoice = readChoice("", 1, 2);
+        bool requiresRefrigeration = (refChoice == 1);
+        
+        int initialQty = readPositiveInt("  Enter Initial Quantity: ");
+        
+        auto newProduct = make_shared<Product>(newId, newName, price, requiresRefrigeration);
+        targetKiosk->addProduct(newProduct, initialQty);
+        PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
+        
+        cout << "\n  ✅ Product added successfully!\n";
+        pressEnterToContinue();
+      } else if (manageChoice == 3) {
+        printBanner("  MANAGE BUNDLES  ", '-');
+        vector<string> allIds = targetKiosk->getInventory()->getAllItemIds();
+        vector<shared_ptr<Bundle>> bundles;
+        
+        for (const string& id : allIds) {
+          auto item = targetKiosk->getInventory()->getItem(id);
+          auto bundleOpt = std::dynamic_pointer_cast<Bundle>(item);
+          if (bundleOpt) {
+             bundles.push_back(bundleOpt);
+          }
+        }
+        
+        if (bundles.empty()) {
+          cout << "\n  ⚠  No bundles exist in this kiosk.\n";
+          pressEnterToContinue();
+          continue;
+        }
+        
+        for (size_t i = 0; i < bundles.size(); ++i) {
+          cout << "  [" << (i + 1) << "]  " << bundles[i]->getName() << " (ID: " << bundles[i]->getId() << ")\n";
+        }
+        cout << "  [0]  Cancel\n\n";
+        
+        int bChoice = readChoice("  Select bundle to manage [0 to cancel]: ", 0, (int)bundles.size());
+        if (bChoice == 0) continue;
+        
+        auto selectedBundle = bundles[bChoice - 1];
+        
+        cout << "\n  [1] Restock Bundle\n";
+        cout << "  [2] Add Product to Bundle\n";
+        cout << "  [0] Cancel\n\n";
+        int bAct = readChoice("  Select action [0/1/2]: ", 0, 2);
+        if (bAct == 0) continue;
+        
+        if (bAct == 1) {
+           int qty = readPositiveInt("  Enter quantity to add to bundle stock: ");
+           targetKiosk->restockInventory(selectedBundle->getId(), qty);
+           PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
+           cout << "\n  ✅ Bundle restocked successfully!\n";
+           pressEnterToContinue();
+        } else if (bAct == 2) {
+           cout << "\n  Select a product from the kiosk to add to the bundle:\n";
+           vector<string> prodIds = showProductMenu(targetKiosk);
+           if (prodIds.empty()) {
+              cout << "\n  ⚠  No products available.\n";
+              pressEnterToContinue();
+              continue;
+           }
+           cout << "\n  [0]  Cancel\n\n";
+           int pChoice = readChoice("  Select item [0 to cancel]: ", 0, (int)prodIds.size());
+           if (pChoice == 0) continue;
+           
+           string pIdToAdd = prodIds[pChoice - 1];
+           auto itemToAdd = targetKiosk->getInventory()->getItem(pIdToAdd);
+           if (std::dynamic_pointer_cast<Bundle>(itemToAdd)) {
+              cout << "\n  ❌ Nested bundles are better avoided in this UI. Please add a Product.\n";
+              pressEnterToContinue();
+              continue;
+           }
+           
+           selectedBundle->add(itemToAdd);
+           PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
+           cout << "\n  ✅ Item \"" << itemToAdd->getName() << "\" added to bundle \"" << selectedBundle->getName() << "\"!\n";
+           pressEnterToContinue();
+        }
+      }
+    }
   }
 
   cout << "\n  👋 Admin session ended.\n";
@@ -396,6 +501,7 @@ int main() {
   // --- Food Kiosk ---
   auto foodKioskBase =
       KioskFactory::createKiosk("food", "FD-S1", "Central Metro Station");
+  foodKioskBase->setDispenser(make_unique<RefrigeratedDispenser>(8.0));
 
   auto water = make_shared<Product>("P-201", "Mineral Water", 20.0);
   auto sandwich = make_shared<Product>("P-202", "Veg Sandwich", 120.0, true);
@@ -408,6 +514,15 @@ int main() {
   foodKioskBase->addProduct(cola, 15);
   foodKioskBase->addProduct(chips, 10);
   foodKioskBase->addProduct(coffee, 8);
+
+  auto snackCombo = make_shared<Bundle>("B-002", "Snack Combo", 15.0);
+  snackCombo->add(sandwich);
+  snackCombo->add(cola);
+  snackCombo->add(chips);
+  foodKioskBase->addProduct(snackCombo, 5);
+
+  unique_ptr<Kiosk> foodKiosk =
+      make_unique<RefrigerationModule>(std::move(foodKioskBase), 8.0);
 
   // --- Pharmacy Kiosk (refrigerated) ---
   auto pharmacyKioskBase =
@@ -422,6 +537,7 @@ int main() {
   auto firstAid = make_shared<Bundle>("B-001", "Basic First Aid Kit", 10.0);
   firstAid->add(crocin);
   firstAid->add(bandage);
+  firstAid->add(vitamin);
 
   pharmacyKioskBase->addProduct(insulin, 5);
   pharmacyKioskBase->addProduct(firstAid, 10);
@@ -444,11 +560,17 @@ int main() {
   emergencyKioskBase->addProduct(blanket, 10);
   emergencyKioskBase->addProduct(matches, 30);
 
+  auto survivalPack = make_shared<Bundle>("B-003", "Survival Pack", 20.0);
+  survivalPack->add(flashlight);
+  survivalPack->add(blanket);
+  survivalPack->add(matches);
+  emergencyKioskBase->addProduct(survivalPack, 10);
+
   unique_ptr<Kiosk> emergencyKiosk =
       make_unique<NetworkModule>(std::move(emergencyKioskBase));
 
   // Load historical inventory data (overwrites default stocks)
-  PersistenceManager::loadInventoryFromFile(foodKioskBase->getInventory(),
+  PersistenceManager::loadInventoryFromFile(foodKiosk->getInventory(),
                                             FOOD_INV_FILE);
   PersistenceManager::loadInventoryFromFile(pharmacyKiosk->getInventory(),
                                             PHARMA_INV_FILE);
@@ -502,7 +624,7 @@ int main() {
 
     // ── ADMIN PANEL ───────────────────────────────────────────────────
     if (role == 2) {
-      runAdminPanel(foodKioskBase.get(), pharmacyKiosk.get(),
+      runAdminPanel(foodKiosk.get(), pharmacyKiosk.get(),
                     emergencyKiosk.get());
       continue;
     }
@@ -533,7 +655,7 @@ int main() {
       Kiosk *selectedKiosk;
       string kioskLabel;
       if (kioskChoice == 1) {
-        selectedKiosk = foodKioskBase.get();
+        selectedKiosk = foodKiosk.get();
         kioskLabel = "🍔  Food Kiosk";
       } else if (kioskChoice == 2) {
         selectedKiosk = pharmacyKiosk.get();
@@ -634,7 +756,7 @@ int main() {
       }
 
       // Save all inventories immediately after the order
-      PersistenceManager::saveInventoryToFile(foodKioskBase->getInventory(),
+      PersistenceManager::saveInventoryToFile(foodKiosk->getInventory(),
                                               FOOD_INV_FILE);
       PersistenceManager::saveInventoryToFile(pharmacyKiosk->getInventory(),
                                               PHARMA_INV_FILE);
@@ -716,7 +838,7 @@ int main() {
   registry.displayGlobalReport();
 
   // Save all kiosk inventories on clean exit
-  PersistenceManager::saveInventoryToFile(foodKioskBase->getInventory(),
+  PersistenceManager::saveInventoryToFile(foodKiosk->getInventory(),
                                           FOOD_INV_FILE);
   PersistenceManager::saveInventoryToFile(pharmacyKiosk->getInventory(),
                                           PHARMA_INV_FILE);
