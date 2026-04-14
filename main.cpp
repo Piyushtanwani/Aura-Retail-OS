@@ -144,12 +144,14 @@ vector<string> showProductMenu(Kiosk *kiosk, bool showOutOfStock = true) {
 
   ostringstream table;
   table << "\n";
-  table
-      << "  ┌──────┬───────────────────────────────────────────────────────────────────────────┬──────────┬─────────────┐\n";
-  table
-      << "  │  No. │  Product Name                                                             │  Price   │  Stock      │\n";
-  table
-      << "  ├──────┼───────────────────────────────────────────────────────────────────────────┼──────────┼─────────────┤\n";
+  table << "  "
+           "┌──────┬───────────────────────────────────────────────────────────"
+           "────────────────┬──────────┬────────────────────┐\n";
+  table << "  │  No. │  Product Name                                           "
+           "                  │  Price   │    Stock           │\n";
+  table << "  "
+           "├──────┼───────────────────────────────────────────────────────────"
+           "────────────────┼──────────┼────────────────────┤\n";
 
   int num = 1;
   bool hasRefrigerated = false;
@@ -181,19 +183,20 @@ vector<string> showProductMenu(Kiosk *kiosk, bool showOutOfStock = true) {
 
     string stockStr =
         (stock > 0) ? to_string(stock) + " unit(s)" : "OUT OF STOCK";
-    int stockPad = 11 - stockStr.length();
+    int stockPad = 12 - (int)stockStr.length();
     if (stockPad > 0)
       stockStr.append(stockPad, ' ');
 
     table << "  │ [" << left << setw(2) << num << "] │  " << paddedName << "│  "
-          << priceStr << "│  " << stockStr << "│\n";
+          << priceStr << "│    " << stockStr << "    │\n";
 
     shown.push_back(id);
     num++;
   }
 
-  table
-      << "  └──────┴───────────────────────────────────────────────────────────────────────────┴──────────┴─────────────┘\n";
+  table << "  "
+           "└──────┴───────────────────────────────────────────────────────────"
+           "────────────────┴──────────┴────────────────────┘\n";
 
   // Now that all inline proxy logs have printed sequentially, print the clean
   // table grid
@@ -344,8 +347,8 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
 
         cout << "\n  [0]  Cancel — go back\n\n";
 
-        int itemChoice = readChoice("  Select item to restock [0 to cancel]: ", 0,
-                                    (int)itemIds.size());
+        int itemChoice = readChoice(
+            "  Select item to restock [0 to cancel]: ", 0, (int)itemIds.size());
 
         if (itemChoice == 0)
           continue;
@@ -375,7 +378,8 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
         }
 
         targetKiosk->restockInventory(selectedId, qty);
-        PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
+        PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
+                                                saveFile);
 
         int newStock = targetKiosk->getInventory()->getStock(selectedId);
         cout << "\n  ✅ Restock complete! Inventory saved to disk.\n";
@@ -385,7 +389,7 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
       } else if (manageChoice == 2) {
         printBanner("  ADD NEW PRODUCT TO KIOSK  ", '-');
         string newId = readNonEmpty("  Enter Product ID (e.g. P-999): ");
-        
+
         if (targetKiosk->getInventory()->getItem(newId) != nullptr) {
           cout << "\n  ❌ Product ID already exists in this kiosk.\n";
           pressEnterToContinue();
@@ -397,85 +401,103 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
         string rawPrice;
         getline(cin, rawPrice);
         double price = 0.0;
-        try { price = stod(rawPrice); } catch (...) { price = 10.0; }
-        
+        try {
+          price = stod(rawPrice);
+        } catch (...) {
+          price = 10.0;
+        }
+
         cout << "  Requires Refrigeration? [1] Yes [2] No: ";
         int refChoice = readChoice("", 1, 2);
         bool requiresRefrigeration = (refChoice == 1);
-        
+
         int initialQty = readPositiveInt("  Enter Initial Quantity: ");
-        
-        auto newProduct = make_shared<Product>(newId, newName, price, requiresRefrigeration);
+
+        auto newProduct =
+            make_shared<Product>(newId, newName, price, requiresRefrigeration);
         targetKiosk->addProduct(newProduct, initialQty);
-        PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
-        
+        PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
+                                                saveFile);
+
         cout << "\n  ✅ Product added successfully!\n";
         pressEnterToContinue();
       } else if (manageChoice == 3) {
         printBanner("  MANAGE BUNDLES  ", '-');
         vector<string> allIds = targetKiosk->getInventory()->getAllItemIds();
         vector<shared_ptr<Bundle>> bundles;
-        
-        for (const string& id : allIds) {
+
+        for (const string &id : allIds) {
           auto item = targetKiosk->getInventory()->getItem(id);
           auto bundleOpt = std::dynamic_pointer_cast<Bundle>(item);
           if (bundleOpt) {
-             bundles.push_back(bundleOpt);
+            bundles.push_back(bundleOpt);
           }
         }
-        
+
         if (bundles.empty()) {
           cout << "\n  ⚠  No bundles exist in this kiosk.\n";
           pressEnterToContinue();
           continue;
         }
-        
+
         for (size_t i = 0; i < bundles.size(); ++i) {
-          cout << "  [" << (i + 1) << "]  " << bundles[i]->getName() << " (ID: " << bundles[i]->getId() << ")\n";
+          cout << "  [" << (i + 1) << "]  " << bundles[i]->getName()
+               << " (ID: " << bundles[i]->getId() << ")\n";
         }
         cout << "  [0]  Cancel\n\n";
-        
-        int bChoice = readChoice("  Select bundle to manage [0 to cancel]: ", 0, (int)bundles.size());
-        if (bChoice == 0) continue;
-        
+
+        int bChoice = readChoice("  Select bundle to manage [0 to cancel]: ", 0,
+                                 (int)bundles.size());
+        if (bChoice == 0)
+          continue;
+
         auto selectedBundle = bundles[bChoice - 1];
-        
+
         cout << "\n  [1] Restock Bundle\n";
         cout << "  [2] Add Product to Bundle\n";
         cout << "  [0] Cancel\n\n";
         int bAct = readChoice("  Select action [0/1/2]: ", 0, 2);
-        if (bAct == 0) continue;
-        
+        if (bAct == 0)
+          continue;
+
         if (bAct == 1) {
-           int qty = readPositiveInt("  Enter quantity to add to bundle stock: ");
-           targetKiosk->restockInventory(selectedBundle->getId(), qty);
-           PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
-           cout << "\n  ✅ Bundle restocked successfully!\n";
-           pressEnterToContinue();
+          int qty =
+              readPositiveInt("  Enter quantity to add to bundle stock: ");
+          targetKiosk->restockInventory(selectedBundle->getId(), qty);
+          PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
+                                                  saveFile);
+          cout << "\n  ✅ Bundle restocked successfully!\n";
+          pressEnterToContinue();
         } else if (bAct == 2) {
-           cout << "\n  Select a product from the kiosk to add to the bundle:\n";
-           vector<string> prodIds = showProductMenu(targetKiosk);
-           if (prodIds.empty()) {
-              cout << "\n  ⚠  No products available.\n";
-              pressEnterToContinue();
-              continue;
-           }
-           cout << "\n  [0]  Cancel\n\n";
-           int pChoice = readChoice("  Select item [0 to cancel]: ", 0, (int)prodIds.size());
-           if (pChoice == 0) continue;
-           
-           string pIdToAdd = prodIds[pChoice - 1];
-           auto itemToAdd = targetKiosk->getInventory()->getItem(pIdToAdd);
-           if (std::dynamic_pointer_cast<Bundle>(itemToAdd)) {
-              cout << "\n  ❌ Nested bundles are better avoided in this UI. Please add a Product.\n";
-              pressEnterToContinue();
-              continue;
-           }
-           
-           selectedBundle->add(itemToAdd);
-           PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
-           cout << "\n  ✅ Item \"" << itemToAdd->getName() << "\" added to bundle \"" << selectedBundle->getName() << "\"!\n";
-           pressEnterToContinue();
+          cout << "\n  Select a product from the kiosk to add to the bundle:\n";
+          vector<string> prodIds = showProductMenu(targetKiosk);
+          if (prodIds.empty()) {
+            cout << "\n  ⚠  No products available.\n";
+            pressEnterToContinue();
+            continue;
+          }
+          cout << "\n  [0]  Cancel\n\n";
+          int pChoice = readChoice("  Select item [0 to cancel]: ", 0,
+                                   (int)prodIds.size());
+          if (pChoice == 0)
+            continue;
+
+          string pIdToAdd = prodIds[pChoice - 1];
+          auto itemToAdd = targetKiosk->getInventory()->getItem(pIdToAdd);
+          if (std::dynamic_pointer_cast<Bundle>(itemToAdd)) {
+            cout << "\n  ❌ Nested bundles are better avoided in this UI. "
+                    "Please add a Product.\n";
+            pressEnterToContinue();
+            continue;
+          }
+
+          selectedBundle->add(itemToAdd);
+          PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
+                                                  saveFile);
+          cout << "\n  ✅ Item \"" << itemToAdd->getName()
+               << "\" added to bundle \"" << selectedBundle->getName()
+               << "\"!\n";
+          pressEnterToContinue();
         }
       }
     }
@@ -624,8 +646,7 @@ int main() {
 
     // ── ADMIN PANEL ───────────────────────────────────────────────────
     if (role == 2) {
-      runAdminPanel(foodKiosk.get(), pharmacyKiosk.get(),
-                    emergencyKiosk.get());
+      runAdminPanel(foodKiosk.get(), pharmacyKiosk.get(), emergencyKiosk.get());
       continue;
     }
 
@@ -766,57 +787,66 @@ int main() {
       // STEP 5: Order Summary
       cout << "\n";
       cout << "  "
-              "╔══════════════════════════════════════════════════════════════╗"
+              "╔═══════════════════════════════════════════════════════════════"
+              "══"
+              "════"
+              "════════╗"
               "\n";
       if (successCount == wantedQty && successCount > 0) {
         cout << "  ║              ✅   PAYMENT SUCCESSFUL   ✅                 "
-                "   ║\n";
+                "                  ║\n";
         cout << "  ║      ✅   ORDER COMPLETE — ALL UNITS DISPENSED   ✅       "
-                "   ║\n";
+                "                  ║\n";
       } else if (successCount > 0) {
         cout << "  ║         ⚠   PAYMENT PARTIALLY SUCCESSFUL   ⚠              "
-                "   ║\n";
+                "                  ║\n";
         cout << "  ║         ⚠   ORDER PARTIAL — SOME DISPENSED FAILED  ⚠      "
-                "   ║\n";
+                "                  ║\n";
       } else {
         cout << "  ║                ❌   PAYMENT FAILED   ❌                   "
-                "   ║\n";
+                "                  ║\n";
         cout << "  ║             ❌  ORDER FAILED — NO UNITS DISPENSED  ❌     "
-                "   ║\n";
+                "                  ║\n";
       }
       cout << "  "
-              "╠══════════════════════════════════════════════════════════════╣"
+              "╠═══════════════════════════════════════════════════════════════"
+              "══"
+              "════"
+              "════════╣"
               "\n";
-      cout << "  ║  Item            : " << left << setw(40)
+      cout << "  ║  Item            : " << left << setw(55)
            << chosenItem->getName() << "  ║\n";
-      cout << "  ║  Units Requested : " << left << setw(40) << wantedQty
+      cout << "  ║  Units Requested : " << left << setw(55) << wantedQty
            << "  ║\n";
-      cout << "  ║  Units Dispensed : " << left << setw(40) << successCount
+      cout << "  ║  Units Dispensed : " << left << setw(55) << successCount
            << "  ║\n";
-      cout << "  ║  Units Failed    : " << left << setw(40) << failCount
+      cout << "  ║  Units Failed    : " << left << setw(55) << failCount
            << "  ║\n";
       {
         ostringstream oss;
         oss << fixed << setprecision(2)
             << (successCount * chosenItem->getPrice());
-        cout << "  ║  Amount Charged  : Rs." << left << setw(37) << oss.str()
+        cout << "  ║  Amount Charged  : Rs." << left << setw(52) << oss.str()
              << "  ║\n";
       }
       if (!lastPayMethod.empty())
-        cout << "  ║  Payment Method  : " << left << setw(40) << lastPayMethod
+        cout << "  ║  Payment Method  : " << left << setw(55) << lastPayMethod
              << "  ║\n";
       cout << "  ║  Inventory File  : Updated ✔                                "
-              " ║\n";
+              "                ║\n";
       if (successCount == 0) {
         cout << "  ║                                                           "
-                "   ║\n";
+                "                  ║\n";
         cout << "  ║  ℹ  You have NOT been charged.                            "
-                "   ║\n";
+                "                  ║\n";
         cout << "  ║     Please try again or choose a different item.          "
-                "   ║\n";
+                "                  ║\n";
       }
       cout << "  "
-              "╚══════════════════════════════════════════════════════════════╝"
+              "╚═══════════════════════════════════════════════════════════════"
+              "══"
+              "════"
+              "════════╝"
               "\n";
 
       if (successCount > 0)
