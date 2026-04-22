@@ -67,6 +67,7 @@ static const string PHARMA_INV_FILE =
 static const string EMERGENCY_INV_FILE =
     "emergency_inventory.json"; // emergency kiosk inventory
 
+// ─── Twilio Configuration ────────────────────────────────────────────────────
 // ─── Twilio Configuration (IMPORTANT: Replace with your actual credentials) ──
 static const string TWILIO_ACCOUNT_SID = "YOUR_TWILIO_SID";
 static const string TWILIO_AUTH_TOKEN  = "YOUR_TWILIO_AUTH_TOKEN";
@@ -75,18 +76,28 @@ static const string ADMIN_PHONE        = "+919574713600";
 
 // ─── SMS Helper ──────────────────────────────────────────────────────────────
 void sendSMS(const string &to, const string &body) {
-  // Construct curl command to send SMS via Twilio API
-  // Using -s for silent, -k if needed (but twilio is https), and redirection to nul/dev/null
+  string safeBody = body;
+#ifdef _WIN32
+  // Windows cmd.exe cannot handle literal newlines in system() calls.
+  // We replace them with spaces to prevent the command from being truncated.
+  for (char &c : safeBody) {
+    if (c == '\n' || c == '\r') c = ' ';
+  }
+#endif
+
+  // Move credentials to the front to ensure they are always sent
+  string auth = TWILIO_ACCOUNT_SID + ":" + TWILIO_AUTH_TOKEN;
   string command = "curl -s -X POST \"https://api.twilio.com/2010-04-01/Accounts/" +
                    TWILIO_ACCOUNT_SID + "/Messages.json\" " +
+                   "-u \"" + auth + "\" " +
                    "--data-urlencode \"To=" + to + "\" " +
                    "--data-urlencode \"From=" + TWILIO_FROM_NUMBER + "\" " +
-                   "--data-urlencode \"Body=" + body + "\" " +
-                   "-u " + TWILIO_ACCOUNT_SID + ":" + TWILIO_AUTH_TOKEN;
+                   "--data-urlencode \"Body=" + safeBody + "\"";
 
 #ifdef _WIN32
   command += " > nul 2>&1";
 #else
+  command += " -u " + TWILIO_ACCOUNT_SID + ":" + TWILIO_AUTH_TOKEN;
   command += " > /dev/null 2>&1";
 #endif
 

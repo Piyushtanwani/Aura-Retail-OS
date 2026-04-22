@@ -32,6 +32,21 @@ g++ -std=c++17 main.cpp inventory/RealInventory.cpp inventory/SecureInventory.cp
 ./aura_retail_os.exe
 ```
 
+## ⚙️ Configuration & Twilio Setup
+
+For security reasons, the GitHub repository does **not** contain valid Twilio credentials. To enable SMS features (OTP and Receipts), you must configure your own Twilio account:
+
+1.  Open `main.cpp`.
+2.  Locate the **Twilio Configuration** section (around line 70).
+3.  Replace the placeholders with your actual Twilio details:
+    *   `TWILIO_ACCOUNT_SID`: Your Twilio SID.
+    *   `TWILIO_AUTH_TOKEN`: Your Auth Token.
+    *   `TWILIO_FROM_NUMBER`: Your Twilio phone number.
+    *   `ADMIN_PHONE`: The phone number where you want to receive Admin OTPs.
+
+> [!IMPORTANT]
+> **Warning**: Never commit your actual `main.cpp` with valid credentials back to a public repository. Use environment variables or local configuration files for production environments.
+
 ---
 
 ## ✨ Feature Overview
