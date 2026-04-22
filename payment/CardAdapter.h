@@ -40,13 +40,16 @@ class CardAdapter : public PaymentProcessor {
 private:
     LegacyCardTerminal legacyTerminal_;   // the adaptee
     std::string cardNumber_;
+    std::string expiry_;
+    std::string cvv_;
 
 public:
-    explicit CardAdapter(const std::string& cardNumber = "4111111111111111")
-        : cardNumber_(cardNumber) {}
+    explicit CardAdapter(const std::string& cardNumber, const std::string& expiry, const std::string& cvv)
+        : cardNumber_(cardNumber), expiry_(expiry), cvv_(cvv) {}
 
     bool processPayment(double amount) override {
         std::cout << "  🔌 [CardAdapter] Adapting payment request to legacy card terminal...\n";
+        // Legacy system only takes card number and amount, but we store CVV/Expiry for record
         return legacyTerminal_.swipeCard(cardNumber_, amount);
     }
 

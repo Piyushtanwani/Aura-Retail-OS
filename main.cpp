@@ -181,6 +181,44 @@ bool isValidCard(const string &card) {
   return true;
 }
 
+bool isValidCVV(const string &cvv) {
+  if (cvv.length() != 3)
+    return false;
+  for (char c : cvv) {
+    if (!isdigit(c))
+      return false;
+  }
+  return true;
+}
+
+bool isValidExpiry(const string &expiry) {
+  if (expiry.length() != 5 || expiry[2] != '/')
+    return false;
+
+  try {
+    int month = stoi(expiry.substr(0, 2));
+    int year = stoi(expiry.substr(3, 2)) + 2000;
+
+    if (month < 1 || month > 12)
+      return false;
+
+    // Get current time
+    time_t t = time(0);
+    tm *now = localtime(&t);
+    int currMonth = now->tm_mon + 1;
+    int currYear = now->tm_year + 1900;
+
+    if (year < currYear)
+      return false;
+    if (year == currYear && month < currMonth)
+      return false;
+
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
 bool isValidPhone(const string &phone) {
   if (phone.length() != 10)
     return false;
@@ -294,10 +332,25 @@ unique_ptr<PaymentProcessor> choosePayment() {
     }
   } else if (choice == 2) {
     while (true) {
-      string card = readNonEmpty("\n  Card Number: ");
-      if (isValidCard(card))
-        return make_unique<CardAdapter>(card);
-      cout << "  ⚠  Invalid Card. Please enter exactly 16 digits.\n";
+      string card = readNonEmpty("\n  Card Number (16 digits): ");
+      if (!isValidCard(card)) {
+        cout << "  ⚠  Invalid Card. Please enter exactly 16 digits.\n";
+        continue;
+      }
+      
+      string expiry = readNonEmpty("  Expiry Date (MM/YY): ");
+      if (!isValidExpiry(expiry)) {
+        cout << "  ⚠  Invalid or Expired date. Use MM/YY format (e.g., 12/28).\n";
+        continue;
+      }
+
+      string cvv = readNonEmpty("  CVV (3 digits): ");
+      if (!isValidCVV(cvv)) {
+        cout << "  ⚠  Invalid CVV. Please enter exactly 3 digits.\n";
+        continue;
+      }
+
+      return make_unique<CardAdapter>(card, expiry, cvv);
     }
   } else {
     while (true) {

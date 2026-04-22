@@ -145,7 +145,7 @@ The application drives the runtime logic via a role-based, text-mode interactive
 | **Customer** | Add to Cart | Pick an item from the generated catalogue and define quantity | Catalog Number (e.g. `3`), then `2` units |
 | **Customer** | Payment OTP | 10-digit mobile verification via 2FA SMS | `123456` (via SMS) |
 | **Customer** | Payment Selection| Choose between UPI, Card, or Wallet APIs | `1` (UPI) |
-| **Customer** | Gateway Details | Provide the respective UPI ID, Card Num, or App name | `user@upi`, `4111222233334444` |
+| **Customer** | Gateway Details | Provide UPI ID, **Card Details (Num, Expiry, CVV)**, or App name | `user@upi`, `4111...`, `12/28`, `123` |
 | **Customer** | SMS Receipt | Automated summary sent to the verified mobile number | Direct Delivery |
 
 ---
