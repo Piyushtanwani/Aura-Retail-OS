@@ -41,6 +41,7 @@
 ║  │  registry/CentralRegistry  (Singleton)                           │   ║
 ║  │  hardware/Dispenser*  (Adapter)                                  │   ║
 ║  │  persistence/PersistenceManager  (JSON I/O)                      │   ║
+║  │  Twilio SMS API (via curl) ─ OTP & Receipt Delivery              │   ║
 ║  └──────────────────────────────────────────────────────────────────┘   ║
 ╚══════════════════════════════════════════════════════════════════════════╝
 ```
@@ -58,6 +59,7 @@
 | **Hardware Domain** | `hardware/` | Dispenser abstraction + external hardware adapter |
 | **Registry** | `registry/` | Global singleton ledger for kiosks & transactions |
 | **Persistence** | `persistence/` | JSON serialise/deserialise for inventory & transactions |
+| **Security/External**| `main.cpp` | Twilio SMS API integration (OTP & Receipts) |
 
 ---
 
@@ -83,7 +85,7 @@ KioskFactory
 
 ### 3.2 Decorator Pattern — `KioskDecorator`
 
-**Problem:** Hardware modules (refrigeration, network, AI) need to be attached optionally and in any combination without an explosion of subclasses.  
+**Problem:** Hardware modules (refrigeration, network) need to be attached optionally and in any combination without an explosion of subclasses.  
 **Solution:** `KioskDecorator` wraps any `Kiosk` and delegates all calls. Concrete decorators intercept calls to add behaviour.
 
 ```
@@ -93,8 +95,7 @@ Kiosk (abstract)
     ├── EmergencyKiosk
     └── KioskDecorator  (wraps a Kiosk)
             ├── RefrigerationModule  → checks temperature before purchase
-            ├── NetworkModule        → logs transactions over network
-            └── AIRecommendationModule → suggests add-ons post-purchase
+            └── NetworkModule        → logs transactions over network
 ```
 
 **Stacking example** (pharmacy kiosk in main):
@@ -223,8 +224,7 @@ Kiosk  (abstract)
 ├── EmergencyKiosk
 └── KioskDecorator  (has-a Kiosk wrappee_)
         ├── RefrigerationModule
-        ├── NetworkModule
-        └── AIRecommendationModule
+        └── NetworkModule
 ```
 
 ### 4.2 Inventory Hierarchy
@@ -299,13 +299,20 @@ activeKiosk.purchaseItem("P-102")
     │                       ├─ Step 1.5: Check requiresRefrigeration()
     │                       │            vs. dispenser type
     │                       │
-    │                       ├─ Step 2: PaymentContext.pay(850.0)
+    │                       ├─ Step 2: Payment Authentication (2FA)
+    │                       │          └─ sendSMS(customerPhone, OTP)
+    │                       │          └─ Customer Input → Verify OTP
+    │                       │
+    │                       ├─ Step 3: PaymentContext.pay(850.0)
     │                       │          └─ UPIAdapter.processPayment()
     │                       │              └─ LegacyUPIGateway.initiateUPIPayment()
     │                       │
-    │                       ├─ Step 3: SecureInventory.decrementStock("P-102")
+    │                       ├─ Step 4: SecureInventory.decrementStock("P-102")
     │                       │
-    │                       └─ Step 4: RefrigeratedDispenser.dispense("P-102", "Insulin Pen")
+    │                       ├─ Step 5: RefrigeratedDispenser.dispense("P-102", "Insulin Pen")
+    │                       │
+    │                       └─ Step 6: Automated SMS Receipt
+    │                                  └─ sendSMS(customerPhone, Summary)
     │
     └─ Returns Transaction { txId, kioskId, itemId, amount, status }
             │
@@ -343,8 +350,7 @@ main.cpp
   │
   ├── core/KioskDecorator.h → core/Kiosk.h
   │       ├── core/RefrigerationModule.h
-  │       ├── core/NetworkModule.h
-  │       └── core/AIRecommendationModule.h
+  │       └── core/NetworkModule.h
   │
   ├── inventory/Bundle.h    → inventory/InventoryComponent.h
   ├── inventory/Product.h   → inventory/InventoryComponent.h
@@ -413,6 +419,8 @@ On Shutdown:
 | **No external JSON library** | Zero dependencies, portable anywhere | Manual serialisation is verbose and error-prone |
 | **`InventoryInterface` abstraction** | Allows `SecureInventory` proxy without touching `RealInventory` | One extra indirection layer |
 | **`PaymentProcessor` as pure abstract class** | New adapters need no change to context or kiosk | Requires adapter boilerplate for each gateway |
+| **Twilio integration via `curl`** | High portability and zero library dependencies | Requires `curl` to be installed on the host OS |
+| **Mandatory SMS Receipts** | Ensures transaction traceability for all customers | Increases API usage vs optional opt-in |
 
 ---
 

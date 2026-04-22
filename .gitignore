@@ -1,0 +1,9 @@
+# Binaries
+*.exe
+aura_retail_os
+*.o
+*.obj
+
+# OS files
+.DS_Store
+Thumbs.db

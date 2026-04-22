@@ -31,6 +31,8 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstdlib> // for system()
+#include <ctime>   // for time()
 
 #ifdef _WIN32
 #include <windows.h> // for SetConsoleOutputCP
@@ -64,6 +66,32 @@ static const string PHARMA_INV_FILE =
     "pharmacy_inventory.json"; // pharmacy kiosk inventory
 static const string EMERGENCY_INV_FILE =
     "emergency_inventory.json"; // emergency kiosk inventory
+
+// ─── Twilio Configuration (IMPORTANT: Replace with your actual credentials) ──
+static const string TWILIO_ACCOUNT_SID = "YOUR_TWILIO_SID";
+static const string TWILIO_AUTH_TOKEN  = "YOUR_TWILIO_AUTH_TOKEN";
+static const string TWILIO_FROM_NUMBER = "+14782150594";
+static const string ADMIN_PHONE        = "+919574713600";
+
+// ─── SMS Helper ──────────────────────────────────────────────────────────────
+void sendSMS(const string &to, const string &body) {
+  // Construct curl command to send SMS via Twilio API
+  // Using -s for silent, -k if needed (but twilio is https), and redirection to nul/dev/null
+  string command = "curl -s -X POST \"https://api.twilio.com/2010-04-01/Accounts/" +
+                   TWILIO_ACCOUNT_SID + "/Messages.json\" " +
+                   "--data-urlencode \"To=" + to + "\" " +
+                   "--data-urlencode \"From=" + TWILIO_FROM_NUMBER + "\" " +
+                   "--data-urlencode \"Body=" + body + "\" " +
+                   "-u " + TWILIO_ACCOUNT_SID + ":" + TWILIO_AUTH_TOKEN;
+
+#ifdef _WIN32
+  command += " > nul 2>&1";
+#else
+  command += " > /dev/null 2>&1";
+#endif
+
+  system(command.c_str());
+}
 
 // Forward declarations (saveAll uses Kiosk*)
 class Kiosk;
@@ -135,6 +163,35 @@ string readNonEmpty(const string &prompt) {
     cout << "  ⚠  This field cannot be empty. Please try again.\n";
   }
 }
+
+// ─── Payment Validation Helpers ──────────────────────────────────────────────
+
+bool isValidUPI(const string &upi) {
+  size_t atPos = upi.find('@');
+  return (atPos != string::npos && atPos > 0 && atPos < upi.length() - 1);
+}
+
+bool isValidCard(const string &card) {
+  if (card.length() != 16)
+    return false;
+  for (char c : card) {
+    if (!isdigit(c))
+      return false;
+  }
+  return true;
+}
+
+bool isValidPhone(const string &phone) {
+  if (phone.length() != 10)
+    return false;
+  for (char c : phone) {
+    if (!isdigit(c))
+      return false;
+  }
+  return true;
+}
+
+bool isValidWallet(const string &wallet) { return wallet.length() >= 3; }
 
 // ─── Show numbered product catalogue (customer view — out-of-stock included) ─
 // Returns parallel vector of item IDs.
@@ -229,14 +286,27 @@ unique_ptr<PaymentProcessor> choosePayment() {
   int choice = readChoice("  Your payment choice [1/2/3]: ", 1, 3);
 
   if (choice == 1) {
-    string vpa = readNonEmpty("\n  UPI ID: ");
-    return make_unique<UPIAdapter>(vpa);
+    while (true) {
+      string vpa = readNonEmpty("\n  UPI ID: ");
+      if (isValidUPI(vpa))
+        return make_unique<UPIAdapter>(vpa);
+      cout << "  ⚠  Invalid UPI ID format. Please use format: name@bank\n";
+    }
   } else if (choice == 2) {
-    string card = readNonEmpty("\n  Card Number: ");
-    return make_unique<CardAdapter>(card);
+    while (true) {
+      string card = readNonEmpty("\n  Card Number: ");
+      if (isValidCard(card))
+        return make_unique<CardAdapter>(card);
+      cout << "  ⚠  Invalid Card. Please enter exactly 16 digits.\n";
+    }
   } else {
-    string wallet = readNonEmpty("\n  Wallet Name: ");
-    return make_unique<WalletAdapter>(wallet);
+    while (true) {
+      string wallet = readNonEmpty("\n  Wallet Name: ");
+      if (isValidWallet(wallet))
+        return make_unique<WalletAdapter>(wallet);
+      cout << "  ⚠  Invalid Wallet. Please enter a valid wallet name (min 3 "
+              "chars).\n";
+    }
   }
 }
 
@@ -244,31 +314,39 @@ unique_ptr<PaymentProcessor> choosePayment() {
 void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
                    Kiosk *emergencyKiosk) {
 
-  // --- PIN Authentication ---
-  printBanner("  ADMIN LOGIN  ");
-  cout << "\n  This panel is restricted to authorised personnel only.\n";
-  cout << "  You have 3 attempts to enter the correct PIN.\n\n";
-
+  // --- OTP Authentication ---
+  printBanner("  ADMIN AUTHENTICATION (OTP)  ");
+  cout << "\n  OTP will be sent to the registered Admin mobile number (" << ADMIN_PHONE << ").\n";
+  
   bool authenticated = false;
+
+  // Generate 6-digit OTP
+  int otpVal = 100000 + (rand() % 900000);
+  string otpStr = to_string(otpVal);
+
+  cout << "  🚀 Sending OTP...";
+  sendSMS(ADMIN_PHONE, "Your Aura Retail OS Admin OTP is: " + otpStr);
+  cout << " Done!\n\n";
+
   for (int attempt = 1; attempt <= 3; attempt++) {
-    cout << "  Enter Admin PIN (attempt " << attempt << "/3): ";
-    string pin;
-    getline(cin, pin);
-    if (pin == ADMIN_PIN) {
+    cout << "  Enter 6-digit OTP (attempt " << attempt << "/3): ";
+    string inputOtp;
+    getline(cin, inputOtp);
+    if (inputOtp == otpStr) {
       authenticated = true;
       break;
     }
     if (attempt < 3)
-      cout << "  ❌ Incorrect PIN. Try again.\n\n";
+      cout << "  ❌ Invalid OTP. Please check your messages.\n\n";
   }
 
   if (!authenticated) {
-    cout << "\n  🚫 Access denied. Too many incorrect attempts.\n";
+    cout << "\n  🚫 Access denied. Authentication failed.\n";
     pressEnterToContinue();
     return;
   }
 
-  cout << "\n  ✅ PIN accepted. Welcome, Admin.\n";
+  cout << "\n  ✅ Access granted. Welcome, Admin.\n";
   pressEnterToContinue();
 
   // --- Admin Menu Loop ---
@@ -512,6 +590,8 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
 int main() {
 
   // ── SYSTEM SETUP ─────────────────────────────────────────────────────
+  srand(static_cast<unsigned int>(time(0))); // Seed for OTP generation
+
 #ifdef _WIN32
   // Force Windows console to use UTF-8 so emojis and box characters render
   // correctly
@@ -751,7 +831,43 @@ int main() {
            << setprecision(2) << totalCost << "\n";
       cout << "  ─────────────────────────────────────────────────────\n";
 
-      // STEP 3: Payment (asked once for the whole order)
+      // --- STEP 3: Payment Authentication & Method ---
+      printBanner("  STEP 3 — PAYMENT  ", '-');
+      
+      string customerPhone;
+      while (true) {
+        customerPhone = readNonEmpty("\n  Enter your 10-digit mobile number for Payment OTP: ");
+        if (isValidPhone(customerPhone)) break;
+        cout << "  ⚠  Invalid mobile number. Please enter exactly 10 numeric digits.\n";
+      }
+      string fullCustomerPhone = "+91" + customerPhone;
+      
+      int payOtp = 100000 + (rand() % 900000);
+      string payOtpStr = to_string(payOtp);
+      
+      cout << "  🚀 Sending payment OTP to " << fullCustomerPhone << "...";
+      sendSMS(fullCustomerPhone, "Aura Retail OS - Payment OTP: " + payOtpStr + " for amount Rs." + to_string((int)totalCost));
+      cout << " Done!\n";
+      
+      bool payAuth = false;
+      for (int att = 1; att <= 3; att++) {
+        cout << "  Enter 6-digit OTP (attempt " << att << "/3): ";
+        string inPayOtp;
+        getline(cin, inPayOtp);
+        if (inPayOtp == payOtpStr) {
+          payAuth = true;
+          break;
+        }
+        if (att < 3) cout << "  ❌ Invalid OTP. Please check your messages.\n";
+      }
+      
+      if (!payAuth) {
+        cout << "\n  ❌ Payment authentication failed. Transaction cancelled.\n";
+        pressEnterToContinue();
+        continue;
+      }
+      cout << "  ✅ Authentication successful!\n\n";
+
       unique_ptr<PaymentProcessor> payProc = choosePayment();
       selectedKiosk->setPaymentStrategy(std::move(payProc));
 
@@ -849,8 +965,23 @@ int main() {
               "════════╝"
               "\n";
 
-      if (successCount > 0)
+      if (successCount > 0) {
         cout << "  🎉 Please collect your item(s) from the dispenser slot.\n";
+
+        // --- Mandatory SMS Order Summary ---
+        ostringstream smsBody;
+        smsBody << "Aura Retail OS - ORDER SUMMARY\n"
+                << "Item: " << chosenItem->getName() << "\n"
+                << "Qty: " << successCount << "\n"
+                << "Total: Rs." << fixed << setprecision(2)
+                << (successCount * chosenItem->getPrice()) << "\n"
+                << "Thank you for using Aura Retail!";
+
+        cout << "\n  📨 Sending mandatory order summary to " << fullCustomerPhone
+             << "...";
+        sendSMS(fullCustomerPhone, smsBody.str());
+        cout << " Sent!\n";
+      }
 
       // STEP 6: Continue or exit
       cout << "\n\n  What would you like to do next?\n\n";

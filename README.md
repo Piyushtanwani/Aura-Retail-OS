@@ -46,6 +46,7 @@ g++ -std=c++17 main.cpp inventory/RealInventory.cpp inventory/SecureInventory.cp
 | 6 | **Atomic Transactions** | Stock and payment roll back automatically on failure |
 | 7 | **Global Registry** | Singleton tracks all kiosks and transactions network-wide |
 | 8 | **JSON Persistence** | Inventory and transaction history survive process restarts |
+| 9 | **Twilio SMS Security**| Real-time OTP for Admin/Payments and automated SMS receipts |
 
 ---
 
@@ -137,13 +138,15 @@ The application drives the runtime logic via a role-based, text-mode interactive
 | Flow / Role | Action Step | What the System Requests | Example Input |
 |-------------|-------------|--------------------------|---------------|
 | **Global** | Role Selection | Choose between Customer or Admin mode | `1` (Customer), `2` (Admin) |
-| **Admin** | PIN Authentication | A secret PIN is required to unlock inventory management | `1234` |
+| **Admin** | OTP Authentication | Mandatory 6-digit code sent to registered Admin phone | `998877` (via SMS) |
 | **Admin** | Kiosk View/Restock | Choose a kiosk to review stock or refill empty products | `1` (Food Kiosk), `4` (View all) |
 | **Admin** | Stock Quantity | Enter the number of units to append to current stock | `20`, `50` |
 | **Customer** | Select Kiosk | Choose the physical kiosk location to shop from | `1` (Food), `2` (Pharmacy) |
 | **Customer** | Add to Cart | Pick an item from the generated catalogue and define quantity | Catalog Number (e.g. `3`), then `2` units |
+| **Customer** | Payment OTP | 10-digit mobile verification via 2FA SMS | `123456` (via SMS) |
 | **Customer** | Payment Selection| Choose between UPI, Card, or Wallet APIs | `1` (UPI) |
 | **Customer** | Gateway Details | Provide the respective UPI ID, Card Num, or App name | `user@upi`, `4111222233334444` |
+| **Customer** | SMS Receipt | Automated summary sent to the verified mobile number | Direct Delivery |
 
 ---
 
