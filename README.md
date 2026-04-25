@@ -105,6 +105,12 @@ OOP Project/
 
 ---
 
+## Architecture
+
+For a detailed breakdown of the modules, data flow, persistence layers, and a high-level system diagram, please refer to the **[Architecture Documentation](ARCHITECTURE.md)**.
+
+---
+
 ## How to Run
 
 ### Prerequisites
