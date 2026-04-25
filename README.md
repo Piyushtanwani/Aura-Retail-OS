@@ -168,16 +168,20 @@ g++ -std=c++17 main.cpp inventory/RealInventory.cpp inventory/SecureInventory.cp
 
 ## Screenshots
 
-> Screenshots of the running application:
+### Welcome Screen & Role Selection
+![Main Menu](screenshots/Main%20Menu.png)
 
-*(Add 3–4 screenshots of the CLI in action here)*
+### Product Catalogue
+![Product Selection](screenshots/Product%20Selection.png)
 
-<!-- Example format:
-![Main Menu](screenshots/main_menu.png)
-![Product Selection](screenshots/product_selection.png)
-![Payment Flow](screenshots/payment_flow.png)
-![Admin Panel](screenshots/admin_panel.png)
--->
+### Payment Success & Order Summary
+![Payment Success](screenshots/Payment%20Success.png)
+
+### Admin Panel with OTP Authentication
+![Admin Panel](screenshots/Admin%20Panel.png)
+
+### Session Summary
+![Session Summary](screenshots/Session%20Summary.png)
 
 ---
 
@@ -202,10 +206,10 @@ g++ -std=c++17 main.cpp inventory/RealInventory.cpp inventory/SecureInventory.cp
 
 | Name | Student ID | Role |
 |------|-----------|------|
-| Afif Momin | 202512063 | Kiosk Core & Overall Integration — Designed KioskInterface, implemented FoodKiosk, PharmacyKiosk, EmergencyKiosk, managed Inventory-Payment-Hardware interaction, contributed to system architecture & UML |
-| Deep Soni | 202512089 | Inventory System (Composite + Proxy) — Implemented Item, Product, Bundle classes, hierarchical inventory with Composite Pattern, SecureInventory & RealInventory with Proxy Pattern, stock & bundle logic |
-| Ismail Mansuri | 202512075 | Payment System (Strategy + Adapter) — Implemented Payment interface & multiple methods, Strategy Pattern for dynamic selection, UPI/Card/Wallet via Adapter Pattern, transaction processing & validation |
-| Piyush Tanwani | 202512021 | Hardware Layer & Supporting Modules — Implemented Dispenser, SpiralDispenser, ConveyorDispenser, Hardware Abstraction via Adapter, Decorator modules (AI, Cloud, Network), CentralRegistry via Singleton |
+| Afif Momin | 202512063 | Kiosk Core & Overall Integration — Designed Kiosk abstract base class, implemented FoodKiosk, PharmacyKiosk, EmergencyKiosk, managed Inventory-Payment-Hardware interaction, contributed to system architecture |
+| Deep Soni | 202512089 | Inventory System (Composite + Proxy) — Implemented InventoryComponent, Product, Bundle classes, hierarchical inventory with Composite Pattern, SecureInventory & RealInventory with Proxy Pattern, stock & bundle logic |
+| Ismail Mansuri | 202512075 | Payment System (Strategy + Adapter) — Implemented PaymentProcessor interface & multiple methods, Strategy Pattern for dynamic selection, UPIAdapter/CardAdapter/WalletAdapter via Adapter Pattern, transaction processing & validation |
+| Piyush Tanwani | 202512021 | Hardware Layer & Supporting Modules — Implemented Dispenser, StandardDispenser, RefrigeratedDispenser, DispenserAdapter for Hardware Abstraction, Decorator modules (RefrigerationModule, NetworkModule), CentralRegistry via Singleton |
 
 ---
 
