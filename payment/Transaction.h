@@ -32,6 +32,7 @@ struct Transaction {
     int quantity;
     double amount;
     std::string paymentMethod;
+    std::string customerPhone;
     TransactionStatus status;
     std::time_t timestamp;
 
@@ -42,9 +43,11 @@ struct Transaction {
                 int qty,
                 double amt,
                 const std::string& payMethod,
+                const std::string& phone,
                 TransactionStatus st)
         : transactionId(txId), kioskId(kId), itemId(iId), itemName(iName),
-          quantity(qty), amount(amt), paymentMethod(payMethod), status(st),
+          quantity(qty), amount(amt), paymentMethod(payMethod), 
+          customerPhone(phone), status(st),
           timestamp(std::time(nullptr)) {}
 
     std::string getStatusString() const {

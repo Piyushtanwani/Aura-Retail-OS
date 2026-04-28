@@ -24,9 +24,9 @@ public:
         std::cout << "  🎨 [Decorator] Attached Network/Cloud Sync Module to Kiosk " << kioskId_ << "\n";
     }
 
-    Transaction purchaseItem(const std::string& itemId, int quantity = 1) override {
+    Transaction purchaseItem(const std::string& itemId, int quantity, const std::string& phone) override {
         // Delegate purchase
-        Transaction tx = KioskDecorator::purchaseItem(itemId, quantity);
+        Transaction tx = KioskDecorator::purchaseItem(itemId, quantity, phone);
 
         // Add post-purchase behavior
         if (tx.status == TransactionStatus::SUCCESS) {

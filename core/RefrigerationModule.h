@@ -29,12 +29,12 @@ public:
                   << currentTemp_ << "°C) to Kiosk " << kioskId_ << "\n";
     }
 
-    Transaction purchaseItem(const std::string& itemId, int quantity = 1) override {
+    Transaction purchaseItem(const std::string& itemId, int quantity, const std::string& phone) override {
         std::cout << "  ❄️  [RefrigerationModule] Pre-purchase safety check...\n";
         std::cout << "  ❄️  [RefrigerationModule] Current temperature is " << currentTemp_ << "°C.\n";
 
         // Let the wrapped kiosk handle the actual purchase
-        return KioskDecorator::purchaseItem(itemId, quantity);
+        return KioskDecorator::purchaseItem(itemId, quantity, phone);
     }
 
     std::string describeModules() const override {

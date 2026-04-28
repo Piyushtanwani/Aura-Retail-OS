@@ -42,6 +42,7 @@
 #include "core/KioskFactory.h"
 #include "core/NetworkModule.h"
 #include "core/RefrigerationModule.h"
+#include "core/KioskCommands.h"
 
 // Inventory & Composite
 #include "inventory/Bundle.h"
@@ -68,11 +69,11 @@ static const string EMERGENCY_INV_FILE =
     "emergency_inventory.json"; // emergency kiosk inventory
 
 // ─── Twilio Configuration ────────────────────────────────────────────────────
-// ─── Twilio Configuration (IMPORTANT: Replace with your actual credentials) ──
+// ─── Twilio Configuration ────────────────────────────────────────────────────
 static const string TWILIO_ACCOUNT_SID = "YOUR_TWILIO_SID";
 static const string TWILIO_AUTH_TOKEN  = "YOUR_TWILIO_AUTH_TOKEN";
-static const string TWILIO_FROM_NUMBER = "+14782150594";
-static const string ADMIN_PHONE        = "+919574713600";
+static const string TWILIO_FROM_NUMBER = "+1234567890";
+static const string ADMIN_PHONE        = "+910000000000";
 
 // ─── SMS Helper ──────────────────────────────────────────────────────────────
 void sendSMS(const string &to, const string &body) {
@@ -422,12 +423,13 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
     cout << "  [2]  Manage Pharmacy Kiosk    (City Hospital)\n";
     cout << "  [3]  Manage Emergency Kiosk   (Highway Outpost)\n";
     cout << "  [4]  View all kiosk stock\n";
-    cout << "  [5]  Exit Admin Panel\n";
+    cout << "  [5]  Refund a Transaction     (Admin Overide)\n";
+    cout << "  [6]  Exit Admin Panel\n";
     cout << "\n";
 
-    int adminChoice = readChoice("  Admin choice [1/2/3/4/5]: ", 1, 5);
+    int adminChoice = readChoice("  Admin choice [1/2/3/4/5/6]: ", 1, 6);
 
-    if (adminChoice == 5) {
+    if (adminChoice == 6) {
       adminRunning = false;
       break;
     }
@@ -440,6 +442,60 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
       showProductMenu(pharmacyKiosk);
       printBanner("  EMERGENCY KIOSK \u2014 CURRENT STOCK  ", '-');
       showProductMenu(emergencyKiosk);
+      pressEnterToContinue();
+      continue;
+    }
+
+    if (adminChoice == 5) {
+      printBanner("  ADMIN OVERRIDE: REFUND TRANSACTION  ", '-');
+      string txId = readNonEmpty("  Enter Transaction ID to refund: ");
+      
+      CentralRegistry &registry = CentralRegistry::getInstance();
+      const auto& allTxs = registry.getTransactions();
+      auto it = std::find_if(allTxs.begin(), allTxs.end(), [&](const Transaction& t) {
+          return t.transactionId == txId;
+      });
+
+      if (it == allTxs.end()) {
+          cout << "\n  ❌ Transaction ID not found in registry.\n";
+      } else if (it->status != TransactionStatus::SUCCESS) {
+          cout << "\n  ⚠️  Transaction is already " << (it->status == TransactionStatus::REFUNDED ? "REFUNDED" : "FAILED") << ".\n";
+      } else {
+          // Find the kiosk for this transaction
+          Kiosk* target = nullptr;
+          if (it->kioskId == "FD-S1") target = foodKiosk;
+          else if (it->kioskId == "PH-H1") target = pharmacyKiosk;
+          else if (it->kioskId == "EM-10") target = emergencyKiosk;
+
+          if (target) {
+              RefundCommand refundCmd(target, *it);
+              refundCmd.execute();
+              if (refundCmd.wasSuccessful()) {
+                  // Send Refund SMS
+                  if (!it->customerPhone.empty()) {
+                      ostringstream refundSms;
+                      refundSms << "Aura Retail OS - REFUND PROCESSED\n"
+                                << "Transaction ID: " << it->transactionId << "\n"
+                                << "Item: " << it->itemName << "\n"
+                                << "Amount Refunded: Rs." << fixed << setprecision(2) << it->amount << "\n"
+                                << "The amount has been credited back to your original payment method.";
+                      
+                      cout << "  📨 Sending refund notification to " << it->customerPhone << "...";
+                      sendSMS(it->customerPhone, refundSms.str());
+                      cout << " Sent!\n";
+                  }
+
+                  // Update Registry Status
+                  registry.updateTransactionStatus(it->transactionId, TransactionStatus::REFUNDED);
+
+                  // Note: In a real system we'd update the registry status too.
+                  // For this simulation, the logs and stock update prove the logic.
+                  cout << "\n  ✅ Transaction successfully refunded via RefundCommand.\n";
+              }
+          } else {
+              cout << "\n  ❌ Kiosk owner not found.\n";
+          }
+      }
       pressEnterToContinue();
       continue;
     }
@@ -501,8 +557,15 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
 
         cout << "\n  ─────────────────────────────────────────────────────\n";
         cout << "  Item          : " << selectedItem->getName() << "\n";
-        cout << "  Current Stock : " << currentStock << " unit(s)\n";
+        cout << "  Current Stock : " << currentStock << " unit(s)" << (selectedItem->isComposite() ? " (Dynamic)" : "") << "\n";
         cout << "  ─────────────────────────────────────────────────────\n\n";
+
+        if (selectedItem->isComposite()) {
+          cout << "  ⚠  Bundles cannot be restocked directly because their stock is calculated\n";
+          cout << "     from their underlying components. Please restock individual products.\n";
+          pressEnterToContinue();
+          continue;
+        }
 
         int qty = readPositiveInt("  Enter quantity to add (e.g. 10, 50): ");
 
@@ -519,7 +582,9 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
           continue;
         }
 
-        targetKiosk->restockInventory(selectedId, qty);
+        RestockCommand restockCmd(targetKiosk, selectedId, qty);
+        restockCmd.execute();
+        
         PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
                                                 saveFile);
 
@@ -595,22 +660,14 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
 
         auto selectedBundle = bundles[bChoice - 1];
 
-        cout << "\n  [1] Restock Bundle\n";
-        cout << "  [2] Add Product to Bundle\n";
+        cout << "\n  [1] Add Product to Bundle\n";
+        cout << "  [2] Remove Product from Bundle\n";
         cout << "  [0] Cancel\n\n";
         int bAct = readChoice("  Select action [0/1/2]: ", 0, 2);
         if (bAct == 0)
           continue;
 
-        if (bAct == 1) {
-          int qty =
-              readPositiveInt("  Enter quantity to add to bundle stock: ");
-          targetKiosk->restockInventory(selectedBundle->getId(), qty);
-          PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
-                                                  saveFile);
-          cout << "\n  ✅ Bundle restocked successfully!\n";
-          pressEnterToContinue();
-        } else if (bAct == 2) {
+        if (bAct == 1) { // Add Product to Bundle
           cout << "\n  Select a product from the kiosk to add to the bundle:\n";
           vector<string> prodIds = showProductMenu(targetKiosk);
           if (prodIds.empty()) {
@@ -619,26 +676,45 @@ void runAdminPanel(Kiosk *foodKiosk, Kiosk *pharmacyKiosk,
             continue;
           }
           cout << "\n  [0]  Cancel\n\n";
-          int pChoice = readChoice("  Select item [0 to cancel]: ", 0,
-                                   (int)prodIds.size());
-          if (pChoice == 0)
-            continue;
+          int pChoice = readChoice("  Select item [0 to cancel]: ", 0, (int)prodIds.size());
+          if (pChoice == 0) continue;
 
           string pIdToAdd = prodIds[pChoice - 1];
           auto itemToAdd = targetKiosk->getInventory()->getItem(pIdToAdd);
-          if (std::dynamic_pointer_cast<Bundle>(itemToAdd)) {
-            cout << "\n  ❌ Nested bundles are better avoided in this UI. "
-                    "Please add a Product.\n";
+          
+          if (!itemToAdd || std::dynamic_pointer_cast<Bundle>(itemToAdd)) {
+            cout << "\n  ❌ Only products can be added to bundles in this simplified UI.\n";
             pressEnterToContinue();
             continue;
           }
 
           selectedBundle->add(itemToAdd);
-          PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(),
-                                                  saveFile);
-          cout << "\n  ✅ Item \"" << itemToAdd->getName()
-               << "\" added to bundle \"" << selectedBundle->getName()
-               << "\"!\n";
+          PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
+          cout << "\n  ✅ Item \"" << itemToAdd->getName() << "\" added to bundle.\n";
+          pressEnterToContinue();
+          
+        } else if (bAct == 2) { // Remove Product from Bundle
+          auto children = selectedBundle->getChildIds();
+          if (children.empty()) {
+            cout << "\n  ⚠  Bundle is already empty.\n";
+            pressEnterToContinue();
+            continue;
+          }
+
+          cout << "\n  Items in Bundle:\n";
+          for (size_t i = 0; i < children.size(); ++i) {
+            auto cItem = targetKiosk->getInventory()->getItem(children[i]);
+            cout << "  [" << (i + 1) << "] " << (cItem ? cItem->getName() : "Unknown") << "\n";
+          }
+          cout << "  [0] Cancel\n\n";
+
+          int rChoice = readChoice("  Select item to remove [0 to cancel]: ", 0, (int)children.size());
+          if (rChoice == 0) continue;
+
+          string idToRemove = children[rChoice - 1];
+          selectedBundle->remove(idToRemove);
+          PersistenceManager::saveInventoryToFile(targetKiosk->getInventory(), saveFile);
+          cout << "\n  ✅ Item removed from bundle.\n";
           pressEnterToContinue();
         }
       }
@@ -854,6 +930,14 @@ int main() {
       auto chosenItem = selectedKiosk->getInventory()->getItem(chosenItemId);
       int chosenStock = selectedKiosk->getInventory()->getStock(chosenItemId);
 
+      // --- ADDED: Immediate Stock Validation ---
+      if (chosenStock <= 0) {
+        cout << "\n  ❌ ERROR: \"" << chosenItem->getName() << "\" is currently OUT OF STOCK.\n";
+        cout << "  Please select another item.\n";
+        pressEnterToContinue();
+        continue;
+      }
+
       // Confirm selection
       cout << "\n  ─────────────────────────────────────────────────────\n";
       cout << "  You selected:\n";
@@ -941,7 +1025,9 @@ int main() {
       int failCount = 0;
       string lastPayMethod;
 
-      Transaction tx = selectedKiosk->purchaseItem(chosenItemId, wantedQty);
+      PurchaseItemCommand purchaseCmd(selectedKiosk, chosenItemId, wantedQty, fullCustomerPhone);
+      purchaseCmd.execute();
+      Transaction tx = purchaseCmd.getResult();
       if (tx.status == TransactionStatus::SUCCESS) {
         successCount = wantedQty;
         lastPayMethod = tx.paymentMethod;
@@ -996,6 +1082,10 @@ int main() {
               "\n";
       cout << "  ║  Item            : " << left << setw(55)
            << chosenItem->getName() << "  ║\n";
+      if (!tx.transactionId.empty()) {
+        cout << "  ║  Transaction ID  : " << left << setw(55) << tx.transactionId
+             << "  ║\n";
+      }
       cout << "  ║  Units Requested : " << left << setw(55) << wantedQty
            << "  ║\n";
       cout << "  ║  Units Dispensed : " << left << setw(55) << successCount
@@ -1035,6 +1125,7 @@ int main() {
         // --- Mandatory SMS Order Summary ---
         ostringstream smsBody;
         smsBody << "Aura Retail OS - ORDER SUMMARY\n"
+                << "Transaction ID: " << tx.transactionId << "\n"
                 << "Item: " << chosenItem->getName() << "\n"
                 << "Qty: " << successCount << "\n"
                 << "Total: Rs." << fixed << setprecision(2)

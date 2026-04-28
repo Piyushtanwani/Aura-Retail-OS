@@ -1,10 +1,10 @@
 {
   "inventory": [
-      {"id": "B-002", "name": "Snack Combo", "items": ["P-202", "P-203", "P-204"], "stock": 9},
+      {"id": "B-002", "name": "Snack Combo", "items": ["P-202", "P-203", "P-204"], "stock": 8},
       {"id": "P-205", "name": "Hot Coffee", "price": 60.000000, "stock": 7},
-      {"id": "P-204", "name": "Potato Chips", "price": 30.000000, "stock": 10},
-      {"id": "P-203", "name": "Cold Cola Can", "price": 40.000000, "stock": 15},
-      {"id": "P-202", "name": "Veg Sandwich", "price": 120.000000, "stock": 5},
+      {"id": "P-204", "name": "Potato Chips", "price": 30.000000, "stock": 13},
+      {"id": "P-203", "name": "Cold Cola Can", "price": 40.000000, "stock": 18},
+      {"id": "P-202", "name": "Veg Sandwich", "price": 120.000000, "stock": 8},
       {"id": "P-201", "name": "Mineral Water", "price": 20.000000, "stock": 20}
   ]
 }

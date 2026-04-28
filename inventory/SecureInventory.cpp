@@ -27,7 +27,7 @@ void SecureInventory::logAccess(const std::string& operation, const std::string&
     std::time_t now = std::time(nullptr);
     std::tm* lt = std::localtime(&now);
     std::cout << "🛡️  [SecureInventory] ["
-              << std::put_time(lt, "%H:%M:%S") << "] "
+              << std::put_time(lt, "%H:%M:%S") << "] AUTH_CHECK: GRANTED | Operation: "
               << operation;
     if (!itemId.empty()) std::cout << " (item: " << itemId << ")";
     std::cout << "\n";

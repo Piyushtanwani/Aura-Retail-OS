@@ -48,6 +48,7 @@ public:
     // Registry functions
     void registerKiosk(const std::string& kioskId);
     void recordTransaction(const Transaction& tx);
+    void updateTransactionStatus(const std::string& txId, TransactionStatus status);
 
     void displayGlobalReport() const;
 

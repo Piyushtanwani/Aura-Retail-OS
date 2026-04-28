@@ -50,6 +50,9 @@ public:
         return {};
     }
 
+    // Check if this is a composite (Bundle) or a leaf (Product)
+    virtual bool isComposite() const { return false; }
+
     // --- Check if this component requires refrigeration ---
     virtual bool requiresRefrigeration() const { return false; }
 

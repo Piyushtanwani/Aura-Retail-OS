@@ -68,6 +68,8 @@ public:
             });
     }
 
+    bool isComposite() const override { return true; }
+
     std::string toJson(int stock) const override {
         std::string json = "      {\"id\": \"" + id_ + "\", \"name\": \"" + name_ + "\", \"items\": [";
         for (size_t i = 0; i < children_.size(); ++i) {

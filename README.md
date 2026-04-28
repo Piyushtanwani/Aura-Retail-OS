@@ -14,15 +14,17 @@ To design and implement a fully functional retail kiosk simulation using Object-
 
 ## Features
 
-- **Multi-type Kiosks** — Food, Pharmacy, and Emergency kiosks created via Factory
-- **Composite Inventory** — Products and Bundles nestable to any depth
-- **Secure Proxy Layer** — Every inventory access is logged and validated
-- **Runtime Decorators** — Attach/detach Refrigeration and Network modules dynamically
-- **Pluggable Payments** — Swap between UPI, Card, and Wallet strategies at runtime
-- **Atomic Transactions** — Stock and payment roll back automatically on failure
-- **Global Registry** — Singleton tracks all kiosks and transactions network-wide
-- **JSON Persistence** — Inventory and transaction history survive process restarts
-- **Twilio SMS Integration** — Real-time OTP for Admin/Payments and automated SMS receipts
+- **Modular Multi-type Kiosks** — Food, Pharmacy, and Emergency kiosks created via a scalable **Factory**
+- **Hierarchical Inventory** — **Recursive Composite structure** for products and bundles, nestable to any depth
+- **Secure Proxy Gateway** — Intercepts inventory access for **logging, validation, and future RBAC**
+- **Pluggable Hardware Decorators** — Dynamically attach/detach modules (Refrigeration, Network) at runtime
+- **Agnostic Payment Integration** — Swap between UPI, Card, and Wallet adapters without core modification
+- **Command-Driven Operations** — Purchase, Refund, and Restock actions encapsulated as **Command objects** for auditability
+- **Dynamic Bundle Availability** — Bundle stock is **dynamically calculated** from component quantities in real-time
+- **Atomic Transaction Integrity** — Fail-safe state restoration (rollback) for both stock and payments
+- **Global System Registry** — Singleton-based ledger tracking kiosks and city-wide transactions
+- **Persistent State Management** — JSON-based persistence ensures system state survives power cycles
+- **External API Bridge** — Real-time Twilio SMS integration for OTP security, receipts, and **refund notifications**
 
 ---
 
@@ -48,6 +50,7 @@ To design and implement a fully functional retail kiosk simulation using Object-
 | **Adapter** | `UPIAdapter`, `CardAdapter`, `WalletAdapter`, `DispenserAdapter` | Bridges incompatible external APIs |
 | **Composite** | `Product` (leaf) + `Bundle` (composite) | Uniform treatment of single SKUs and bundled kits |
 | **Singleton** | `CentralRegistry` | One global transaction + kiosk ledger across all modules |
+| **Command** | `Command`, `PurchaseItemCommand`, `RestockCommand` | Encapsulates requests as objects for logging and decoupling |
 
 ---
 
@@ -156,9 +159,9 @@ g++ -std=c++17 main.cpp inventory/RealInventory.cpp inventory/SecureInventory.cp
 1. **Launch the program** — Run the compiled executable
 2. **Select Role** — Choose Customer or Admin mode
 3. **Admin Flow:**
-   - Receive OTP on registered phone
-   - Enter OTP to authenticate
-   - View kiosks, restock items, or manage bundles
+    - Receive OTP on registered phone
+    - Enter OTP to authenticate
+    - View kiosks, restock items, manage bundles (add/remove items), or process transaction refunds
 4. **Customer Flow:**
    - Select a kiosk (Food / Pharmacy / Emergency)
    - Browse the product catalogue
@@ -199,6 +202,20 @@ g++ -std=c++17 main.cpp inventory/RealInventory.cpp inventory/SecureInventory.cp
 - **Hardware Validation** — Refrigerated items require a refrigerated kiosk; mismatch is caught before payment
 - **Dispenser Failure Recovery** — Hardware failure after payment restores stock and refunds automatically
 - **Real-time SMS Notifications** — OTP codes and order receipts delivered via Twilio
+
+---
+
+## Path B: Modular Hardware Platform (Project Focus)
+
+This project was developed with a specific focus on **Path B (Modular Hardware Platform)**, emphasizing hardware extensibility, secure modular integration, and long-term architectural stability.
+
+### Key Path B Achievements:
+- **Hardware Abstraction:** Decoupled dispensing logic from physical hardware via the `Dispenser` interface, proven with `Standard` and `Refrigerated` implementations.
+- **Dynamic Extensibility:** Demonstrated through **Decorator modules** that can be attached to any kiosk type at runtime without modifying the base class.
+- **Gateway Interoperability:** Implemented a unified payment interface that converts incompatible external APIs (UPI, Card, Wallet) into a common transaction protocol.
+- **Smart Inventory Logic:** Engineered a **Composite-based inventory** system where **Bundle stock is derived dynamically** from underlying components, preventing ghost sales.
+- **Command Architecture:** Fully implemented the **Command Pattern** for all primary operations (Purchase, Restock, Refund), enabling a clean separation between the UI and system core.
+- **Operational Security:** Established a **Proxy-based security layer** that acts as a single point of enforcement for access logging and state validation.
 
 ---
 

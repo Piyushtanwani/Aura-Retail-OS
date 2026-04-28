@@ -30,6 +30,17 @@ void CentralRegistry::recordTransaction(const Transaction& tx) {
     PersistenceManager::saveTransactionsToFile(allTransactions_, "transactions.json");
 }
 
+void CentralRegistry::updateTransactionStatus(const std::string& txId, TransactionStatus status) {
+    for (auto& tx : allTransactions_) {
+        if (tx.transactionId == txId) {
+            tx.status = status;
+            std::cout << "[Registry] Transaction " << txId << " status updated to " << tx.getStatusString() << "\n";
+            PersistenceManager::saveTransactionsToFile(allTransactions_, "transactions.json");
+            return;
+        }
+    }
+}
+
 void CentralRegistry::displayGlobalReport() const {
     std::cout << "\n=======================================================\n";
     std::cout << "🌐 GLOBAL CENTRAL REGISTRY REPORT\n";
